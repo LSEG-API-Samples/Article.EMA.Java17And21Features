@@ -59,8 +59,11 @@ public class ConsumerRTO {
 
             //Batch
             OmmArray batch_array = EmaFactory.createOmmArray();
-            batch_array.add(EmaFactory.createOmmArrayEntry().ascii("THB="));
-            batch_array.add(EmaFactory.createOmmArrayEntry().ascii("MYR="));
+            //batch_array.add(EmaFactory.createOmmArrayEntry().ascii("THB="));
+            //batch_array.add(EmaFactory.createOmmArrayEntry().ascii("MYR="));
+            for (String item: Utility.itemNames) {
+                batch_array.add(EmaFactory.createOmmArrayEntry().ascii(item));
+            }
 
             ElementList payload = EmaFactory.createElementList();
             payload.add(EmaFactory.createElementEntry().array(EmaRdm.ENAME_BATCH_ITEM_LIST, batch_array));

@@ -10,6 +10,8 @@ package com.lseg.ema.example;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.function.Predicate;
 
 import com.refinitiv.ema.access.OmmConsumerConfig;
 import com.refinitiv.eta.codec.CodecReturnCodes;
@@ -19,8 +21,7 @@ public class Utility {
     static String clientJwk;
     static String audience;
     static String serviceName = "ELEKTRON_DD";
-    static String itemName = "THB=";
-    static String[] itemNames;
+    static String[] itemNames = {"/THB="};
 
     static void printHelp() {
         System.out.println("""
@@ -28,7 +29,7 @@ public class Utility {
                 Options:
                   -?\tShows this usage
                   -serviceName service name to request (optional, default: ELEKTRON_DD).
-                  -itemName Request item name (optional, default: THB=).
+                  -itemNames Comma-separated list of request item names (optional, default: /THB=, example: AUD=,HKD=).
                   -jwkFile file containing the private JWK encoded in JSON format (mandatory for V2 client credentials grant with JWT).
                   -audience Audience value for JWT (optional, for V2 oAuth client credentials with JWT).
                   -keyfile keystore file for encryption (mandatory).
@@ -59,7 +60,7 @@ public class Utility {
                         return false;
                     }
                     case "-serviceName" -> serviceName = nextArg(args, i++);
-                    case "-itemName" -> itemName = nextArg(args, i++);
+                    case "-itemNames" -> itemNames = parseItemNames(nextArg(args, i++));
                     case "-jwkFile" -> loadJwkFile(nextArg(args, i++), config);
                     case "-audience" -> config.audience(audience = nextArg(args, i++));
                     case "-keyfile" -> config.tunnelingKeyStoreFile(nextArg(args, i++));
@@ -115,5 +116,15 @@ public class Utility {
     // Returns the value following the option at the given index, or null if none exists.
     private static String nextArg(String[] args, int index) {
         return index < (args.length - 1) ? args[index + 1] : null;
+    }
+
+    // Splits a comma-separated item list (e.g. "EUR=,THB=,JPY=") into a trimmed, non-blank array.
+    private static String[] parseItemNames(String rawItemNames) {
+        return rawItemNames == null
+                ? new String[0]
+                : Arrays.stream(rawItemNames.split(","))
+                        .map(String::strip)
+                        .filter(Predicate.not(String::isBlank))
+                        .toArray(String[]::new);
     }
 }
