@@ -11,10 +11,10 @@
         <ConsumerList>
             <Consumer>
                 <!-- Name is mandatory -->
-                <Name value="Consumer_1"/>
+                <Name value="Consumer_RTDS"/>
                 <!-- Channel is optional: defaulted to "RSSL_SOCKET + localhost + 14002" -->
                 <!-- Channel or ChannelSet may be specified -->
-                <Channel value="Channel_1"/>
+                <Channel value="Channel_RTDS"/>
                 <!-- Dictionary is optional: defaulted to "ChannelDictionary" if not present -->
                 <Dictionary value="Dictionary_1"/>
                 <XmlTraceToStdout value="0"/>
@@ -36,7 +36,7 @@
     <ChannelGroup>
         <ChannelList>
             <Channel>
-                <Name value="Channel_1"/>
+                <Name value="Channel_RTDS"/>
                 <!-- ChannelType possible values are: -->
                 <!-- ChannelType::RSSL_SOCKET    - TCP IP connection type -->
                 <!-- ChannelType::RSSL_HTTP      - Http tunnel connection type -->

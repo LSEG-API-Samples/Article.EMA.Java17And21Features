@@ -17,15 +17,7 @@
 
     <dependencies>
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.11</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>com.refinitiv.ema
-            </groupId>
+            <groupId>com.refinitiv.ema</groupId>
             <artifactId>ema</artifactId>
             <version>${rtsdk.version}</version>
         </dependency>
