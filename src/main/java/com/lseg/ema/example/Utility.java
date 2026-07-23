@@ -20,6 +20,7 @@ public class Utility {
     static String audience;
     static String serviceName = "ELEKTRON_DD";
     static String itemName = "THB=";
+    static String[] itemNames;
 
     static void printHelp() {
         System.out.println("""

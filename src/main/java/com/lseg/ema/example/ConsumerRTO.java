@@ -13,6 +13,9 @@ import com.refinitiv.ema.access.EmaFactory;
 import com.refinitiv.ema.access.OmmConsumer;
 import com.refinitiv.ema.access.OmmConsumerConfig;
 import com.refinitiv.ema.access.OmmException;
+import com.refinitiv.ema.access.ElementList;
+import com.refinitiv.ema.access.OmmArray;
+import com.refinitiv.ema.rdm.EmaRdm;
 
 public class ConsumerRTO {
 
@@ -39,7 +42,33 @@ public class ConsumerRTO {
             // The "Consumer_RTO" uses EncryptedProtocolType::RSSL_SOCKET predefined in EmaConfig.xml
             consumer = EmaFactory.createOmmConsumer(config.consumerName("Consumer_RTO"));
 
-            consumer.registerClient(EmaFactory.createReqMsg().serviceName(Utility.serviceName).name(Utility.itemName), appClient);
+            //View
+
+            OmmArray view_array = EmaFactory.createOmmArray();
+
+            // Set a fixed size for each array entry to minimize bandwidth, since we know their sizes
+            view_array.fixedWidth(2);
+
+            // Set the array entries
+            view_array.add(EmaFactory.createOmmArrayEntry().intValue(3)); //DSPLY_NAME
+            view_array.add(EmaFactory.createOmmArrayEntry().intValue(11)); //NETCHNG_1
+            view_array.add(EmaFactory.createOmmArrayEntry().intValue(22)); //BID
+            view_array.add(EmaFactory.createOmmArrayEntry().intValue(25)); //ASK
+            view_array.add(EmaFactory.createOmmArrayEntry().intValue(3386)); //QUOTE_DATE
+            view_array.add(EmaFactory.createOmmArrayEntry().intValue(1025)); //QUOTIM
+
+            //Batch
+            OmmArray batch_array = EmaFactory.createOmmArray();
+            batch_array.add(EmaFactory.createOmmArrayEntry().ascii("THB="));
+            batch_array.add(EmaFactory.createOmmArrayEntry().ascii("MYR="));
+
+            ElementList payload = EmaFactory.createElementList();
+            payload.add(EmaFactory.createElementEntry().array(EmaRdm.ENAME_BATCH_ITEM_LIST, batch_array));
+            payload.add(EmaFactory.createElementEntry().uintValue(EmaRdm.ENAME_VIEW_TYPE, 1));
+            payload.add(EmaFactory.createElementEntry().array(EmaRdm.ENAME_VIEW_DATA, view_array));
+
+            //consumer.registerClient(EmaFactory.createReqMsg().serviceName(Utility.serviceName).name(Utility.itemName).payload(payload), appClient);
+            consumer.registerClient(EmaFactory.createReqMsg().serviceName(Utility.serviceName).payload(payload), appClient);
 
             Thread.sleep(900000);            // API calls onRefreshMsg(), onUpdateMsg() and onStatusMsg()
         } catch (InterruptedException | OmmException excp) {

@@ -23,6 +23,7 @@ import com.refinitiv.ema.access.FieldList;
 import com.refinitiv.ema.access.OmmConsumerClient;
 import com.refinitiv.ema.access.OmmConsumerEvent;
 import com.refinitiv.ema.access.Payload;
+import java.util.function.Supplier;
 
 
 class AppClient implements OmmConsumerClient {
@@ -33,11 +34,11 @@ class AppClient implements OmmConsumerClient {
      * Resolves an optional EMA field to its value, or a shared placeholder when unset.
      *
      * @param hasValue whether the EMA field is present on the message
-     * @param value    the field value to return when {@code hasValue} is {@code true}
+     * @param valueSupplier    the field value to return when {@code hasValue} is {@code true}
      * @return {@code value} if present, otherwise {@link #NOT_SET}
      */
-    private static String valueOrNotSet(boolean hasValue, String value) {
-        return hasValue ? value : NOT_SET;
+    private static String valueOrNotSet(boolean hasValue, Supplier<String> valueSupplier) {
+        return hasValue ? valueSupplier.get() : NOT_SET;
     }
 
     /**
@@ -76,8 +77,8 @@ class AppClient implements OmmConsumerClient {
         printEventContext("onRefreshMsg", event);
 
         printItemAndService(
-                valueOrNotSet(refreshMsg.hasName(), refreshMsg.name()),
-                valueOrNotSet(refreshMsg.hasServiceName(), refreshMsg.serviceName()));
+                valueOrNotSet(refreshMsg.hasName(), refreshMsg::name),
+                valueOrNotSet(refreshMsg.hasServiceName(), refreshMsg::serviceName));
 
         System.out.printf("Item State: %s%n", refreshMsg.state());
         //System.out.println(refreshMsg);
@@ -98,8 +99,8 @@ class AppClient implements OmmConsumerClient {
         printEventContext("onUpdateMsg", event);
 
         printItemAndService(
-                valueOrNotSet(updateMsg.hasName(), updateMsg.name()),
-                valueOrNotSet(updateMsg.hasServiceName(), updateMsg.serviceName()));
+                valueOrNotSet(updateMsg.hasName(), updateMsg::name),
+                valueOrNotSet(updateMsg.hasServiceName(), updateMsg::serviceName));
         //System.out.println(updateMsg);
         decodePayloadIfFieldList(updateMsg.payload());
 
@@ -117,8 +118,8 @@ class AppClient implements OmmConsumerClient {
         printEventContext("onStatusMsg", event);
 
         printItemAndService(
-                valueOrNotSet(statusMsg.hasName(), statusMsg.name()),
-                valueOrNotSet(statusMsg.hasServiceName(), statusMsg.serviceName()));
+                valueOrNotSet(statusMsg.hasName(), statusMsg::name),
+                valueOrNotSet(statusMsg.hasServiceName(), statusMsg::serviceName));
 
         if (statusMsg.hasState())
             System.out.println("Item State: " + statusMsg.state());
