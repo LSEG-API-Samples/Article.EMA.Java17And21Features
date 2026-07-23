@@ -16,17 +16,15 @@ import com.refinitiv.ema.access.OmmException;
 
 public class ConsumerRTO {
 
-    static String clientId ="";
-    static String clientSecret ="";
+    static String clientId = "";
+    static String clientSecret = "";
 
-    public static void main(String[] args)
-    {
+    public static void main(String[] args) {
         clientId = System.getenv("RTO_CLIENTID_V2_1");
         clientSecret = System.getenv("RTO_CLIENTSECRET_1");
 
         OmmConsumer consumer = null;
-        try
-        {
+        try {
             OmmConsumerConfig config = EmaFactory.createOmmConsumerConfig();
 
             // Apply credentials from system properties into config before parsing args
@@ -39,18 +37,14 @@ public class ConsumerRTO {
             AppClient appClient = new AppClient();
 
             // The "Consumer_RTO" uses EncryptedProtocolType::RSSL_SOCKET predefined in EmaConfig.xml
-            consumer  = EmaFactory.createOmmConsumer(config.consumerName("Consumer_RTO"));
+            consumer = EmaFactory.createOmmConsumer(config.consumerName("Consumer_RTO"));
 
-            consumer.registerClient( EmaFactory.createReqMsg().serviceName(Utility.serviceName).name(Utility.itemName), appClient);
+            consumer.registerClient(EmaFactory.createReqMsg().serviceName(Utility.serviceName).name(Utility.itemName), appClient);
 
-            Thread.sleep(900000);			// API calls onRefreshMsg(), onUpdateMsg() and onStatusMsg()
-        }
-        catch (InterruptedException | OmmException excp)
-        {
+            Thread.sleep(900000);            // API calls onRefreshMsg(), onUpdateMsg() and onStatusMsg()
+        } catch (InterruptedException | OmmException excp) {
             System.out.println(excp.getMessage());
-        }
-        finally
-        {
+        } finally {
             if (consumer != null) consumer.uninitialize();
         }
     }

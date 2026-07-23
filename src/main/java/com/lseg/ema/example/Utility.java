@@ -10,6 +10,7 @@ package com.lseg.ema.example;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
+
 import com.refinitiv.ema.access.OmmConsumerConfig;
 import com.refinitiv.eta.codec.CodecReturnCodes;
 
@@ -20,10 +21,9 @@ public class Utility {
     static String serviceName = "ELEKTRON_DD";
     static String itemName = "THB=";
 
-    static void printHelp()
-    {
+    static void printHelp() {
         System.out.println("""
-
+                
                 Options:
                   -?\tShows this usage
                   -serviceName service name to request (optional, default: ELEKTRON_DD).
@@ -35,7 +35,7 @@ public class Utility {
                   -securityProvider security provider for encrypted connection (SunJSSE and Conscrypt options are currently supported).
                   -spTLSv1.2 Enable TLS 1.2 security protocol. Default enables both TLS 1.2 and TLS 1.3 (optional).
                   -spTLSv1.3 Enable TLS 1.3 security protocol. Default enables both TLS 1.2 and TLS 1.3 (optional).
-
+                
                 Optional parameters for establishing a connection through a proxy server:
                   -ph Proxy host name (optional).
                   -pp Proxy port number (optional).
@@ -46,17 +46,13 @@ public class Utility {
                 """);
     }
 
-    static boolean readCommandlineArgs(String[] args, OmmConsumerConfig config)
-    {
-        try
-        {
+    static boolean readCommandlineArgs(String[] args, OmmConsumerConfig config) {
+        try {
             boolean tls12 = false;
             boolean tls13 = false;
 
-            for (int i = 0; i < args.length; i++)
-            {
-                switch (args[i])
-                {
+            for (int i = 0; i < args.length; i++) {
+                switch (args[i]) {
                     case "-?" -> {
                         printHelp();
                         return false;
@@ -89,9 +85,7 @@ public class Utility {
                     ? new String[]{"1.2", "1.3"}
                     : tls12 ? new String[]{"1.2"} : new String[]{"1.3"};
             config.tunnelingSecurityProtocolVersions(tlsVersions);
-        }
-        catch (Exception e)
-        {
+        } catch (Exception e) {
             printHelp();
             return false;
         }
@@ -100,20 +94,16 @@ public class Utility {
     }
 
     // Loads a JWK file and applies it to the consumer config; exits the process on read failure.
-    private static void loadJwkFile(String jwkFile, OmmConsumerConfig config)
-    {
+    private static void loadJwkFile(String jwkFile, OmmConsumerConfig config) {
         if (jwkFile == null)
             return;
 
-        try
-        {
+        try {
             // Get the full contents of the JWK file.
             byte[] jwkBuffer = Files.readAllBytes(Paths.get(jwkFile));
             clientJwk = new String(jwkBuffer);
             config.clientJWK(clientJwk);
-        }
-        catch (Exception e)
-        {
+        } catch (Exception e) {
             System.err.println("Error loading JWK file: " + e.getMessage());
             System.err.println();
             System.out.println("Consumer exits...");
@@ -122,8 +112,7 @@ public class Utility {
     }
 
     // Returns the value following the option at the given index, or null if none exists.
-    private static String nextArg(String[] args, int index)
-    {
+    private static String nextArg(String[] args, int index) {
         return index < (args.length - 1) ? args[index + 1] : null;
     }
 }
