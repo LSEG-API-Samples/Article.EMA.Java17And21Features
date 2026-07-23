@@ -2,7 +2,7 @@
  *|            This source code is provided under the Apache 2.0 license
  *|  and is provided AS IS with no warranty or guarantee of fit for purpose.
  *|                See the project's LICENSE.md for details.
- *|           Copyright (C) 2020-2025 LSEG. All rights reserved.
+ *|           Copyright (C) 2020-2026 LSEG. All rights reserved.
  *|-----------------------------------------------------------------------------
  */
 
@@ -17,12 +17,18 @@ import com.refinitiv.ema.access.ElementList;
 import com.refinitiv.ema.access.OmmArray;
 import com.refinitiv.ema.rdm.EmaRdm;
 
+/**
+ * EMA consumer example for Real-Time Optimized (RTO) service.
+ * Demonstrates batch item requests with field views over encrypted connection.
+ */
 public class ConsumerRTO {
 
+    // RTO OAuth 2.0 credentials (loaded from environment variables)
     static String clientId = "";
     static String clientSecret = "";
 
     public static void main(String[] args) {
+        // Load credentials from system environment (RTO_CLIENTID_V2_1, RTO_CLIENTSECRET_1)
         clientId = System.getenv("RTO_CLIENTID_V2_1");
         clientSecret = System.getenv("RTO_CLIENTSECRET_1");
 
@@ -42,14 +48,12 @@ public class ConsumerRTO {
             // The "Consumer_RTO" uses EncryptedProtocolType::RSSL_SOCKET predefined in EmaConfig.xml
             consumer = EmaFactory.createOmmConsumer(config.consumerName("Consumer_RTO"));
 
-            //View
-
+            //Create View
             OmmArray view_array = EmaFactory.createOmmArray();
-
             // Set a fixed size for each array entry to minimize bandwidth, since we know their sizes
             view_array.fixedWidth(2);
 
-            // Set the array entries
+            // Set the array entries (RDM field IDs to request)
             view_array.add(EmaFactory.createOmmArrayEntry().intValue(3)); //DSPLY_NAME
             view_array.add(EmaFactory.createOmmArrayEntry().intValue(11)); //NETCHNG_1
             view_array.add(EmaFactory.createOmmArrayEntry().intValue(22)); //BID
@@ -57,26 +61,27 @@ public class ConsumerRTO {
             view_array.add(EmaFactory.createOmmArrayEntry().intValue(3386)); //QUOTE_DATE
             view_array.add(EmaFactory.createOmmArrayEntry().intValue(1025)); //QUOTIM
 
-            //Batch
+            // Create batch request with item names (from -itemNames arg or default)
             OmmArray batch_array = EmaFactory.createOmmArray();
-            //batch_array.add(EmaFactory.createOmmArrayEntry().ascii("THB="));
-            //batch_array.add(EmaFactory.createOmmArrayEntry().ascii("MYR="));
             for (String item: Utility.itemNames) {
                 batch_array.add(EmaFactory.createOmmArrayEntry().ascii(item));
             }
 
+            // Combine View (which fields) and Batch (which items) into a single payload
             ElementList payload = EmaFactory.createElementList();
             payload.add(EmaFactory.createElementEntry().array(EmaRdm.ENAME_BATCH_ITEM_LIST, batch_array));
             payload.add(EmaFactory.createElementEntry().uintValue(EmaRdm.ENAME_VIEW_TYPE, 1));
             payload.add(EmaFactory.createElementEntry().array(EmaRdm.ENAME_VIEW_DATA, view_array));
 
-            //consumer.registerClient(EmaFactory.createReqMsg().serviceName(Utility.serviceName).name(Utility.itemName).payload(payload), appClient);
+            // Send batch request with view filter to RTO service
             consumer.registerClient(EmaFactory.createReqMsg().serviceName(Utility.serviceName).payload(payload), appClient);
 
-            Thread.sleep(900000);            // API calls onRefreshMsg(), onUpdateMsg() and onStatusMsg()
+            // Keep listener active; onRefreshMsg(), onUpdateMsg(), and onStatusMsg() callbacks fire asynchronously
+            Thread.sleep(900000);
         } catch (InterruptedException | OmmException excp) {
             System.out.println(excp.getMessage());
         } finally {
+            // Clean up consumer connection
             if (consumer != null) consumer.uninitialize();
         }
     }
