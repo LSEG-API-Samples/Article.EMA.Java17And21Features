@@ -1,7 +1,10 @@
-# EMA Java 21 RTO Consumer
+# Demonstrating Java 17 and Java 21 using the EMA Consumer Application 
 
-A Java 21 example that uses the LSEG Enterprise Message API (EMA) to connect to the Real-Time Optimized (RTO) service. It demonstrates:
+This project demonstrate the Java 17 and Java 21 new features via the Enterprise Message API (EMA) Consumer Application. 
 
+The project goal is to show a simple demonstration of the new features in Java 17 and Java 21 that help developers to adopt new version of Java for the code readability and maintainability.
+
+The consumer application performs the following features:
 - OAuth client authentication
 - An encrypted RTO connection with session management
 - Single-item and batch requests

@@ -41,6 +41,56 @@
 - Do not enable JAR minimization because EMA or its dependencies may load classes reflectively.
 - Do not edit or commit generated content under `target/`.
 
+## Java coding conventions and style
+
+### Naming
+- Class names use `UpperCamelCase` (e.g., `ConsumerRTO`, `AppClient`).
+- Method and variable names use `lowerCamelCase` (e.g., `applyEnvironmentCredentials`, `itemNames`).
+- Constants use `UPPER_SNAKE_CASE` and are declared `private static final` (e.g., `CONSUMER_NAME`, `RUN_DURATION`).
+- Package names are all lowercase with dot separators: `com.lseg.ema.example`.
+
+### Code structure
+- Keep classes small and focused on a single responsibility.
+- Use `private static` for methods that are utility helpers within the class and do not need instance state.
+- Prefer early-return guard clauses over deeply nested conditionals.
+- Use `switch` expressions with arrow labels (`->`) rather than fall-through `switch` statements.
+- Use `var` only when the inferred type is immediately obvious at the point of declaration; prefer explicit types in method signatures, fields, and catch clauses.
+
+### Formatting
+- Use 4-space indentation; do not use tabs.
+- Place opening braces on the same line as the declaration or control statement.
+- Omit braces only for single-statement blocks when the body fits on one line and remains readable; be consistent with surrounding code.
+- Limit lines to a readable length; wrap chained method calls by aligning continuation at the opening parenthesis or by one extra indent level.
+- Add a blank line between methods and between logically distinct blocks within a method.
+
+### Javadoc and comments
+- Write `/** ... */` Javadoc on `public` and package-private classes and methods.
+- Use inline `//` comments only to explain non-obvious intent, not to restate what the code already says.
+- Place field-level inline comments after the value on the same line when annotating constants (e.g., `22, // BID`).
+
+### Imports
+- Group imports: standard library first, then third-party, then internal; separate groups with a blank line.
+- Do not use wildcard imports.
+- Remove unused imports.
+
+### Exception handling
+- Catch the most specific exception type available; avoid catching `Exception` or `Throwable` unless required.
+- After catching `InterruptedException`, restore the interrupted status with `Thread.currentThread().interrupt()` before returning or re-throwing.
+- Do not swallow exceptions silently; log or re-throw with context.
+- Use `finally` blocks or try-with-resources to guarantee resource cleanup.
+
+### Collections and streams
+- Prefer the Stream API and method references for filtering, mapping, and collecting when the result is clearer than an equivalent loop.
+- Use `Arrays.stream`, `List.of`, and `Map.of` factory methods for immutable collections.
+- Avoid raw types; always supply type parameters.
+
+### Modern Java features (Java 21)
+- Use records for immutable data carriers.
+- Use sealed interfaces and pattern-matching `switch` when modeling closed type hierarchies.
+- Use `String.isBlank()` instead of `isEmpty()` to guard against whitespace-only values.
+- Use text blocks for multi-line string literals (e.g., `printHelp()` output).
+- Use virtual threads (`Thread.startVirtualThread`) for lightweight concurrent tasks where appropriate.
+
 ## Documentation, licensing, and validation
 
 - Add Apache-2.0 headers to new Java files, matching the existing copyright style, and keep licensing references consistent with `LICENSE.md`.
