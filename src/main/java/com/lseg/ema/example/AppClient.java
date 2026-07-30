@@ -98,13 +98,11 @@ class AppClient implements OmmConsumerClient {
 
         System.out.printf("Item State: %s%n", refreshMsg.state());
 
-        if (refreshMsg.domainType() == EmaRdm.MMT_LOGIN)
-        {
+        if (refreshMsg.domainType() == EmaRdm.MMT_LOGIN) {
             _loginRefresh.clear();
             System.out.println(_loginRefresh.message(refreshMsg).toString());
         }
-        else
-        {
+        else {
             decode( refreshMsg );
         }
 
@@ -147,8 +145,7 @@ class AppClient implements OmmConsumerClient {
         if (statusMsg.hasState())
             System.out.println("Item State: " + statusMsg.state());
 
-        if (statusMsg.domainType() == EmaRdm.MMT_LOGIN)
-        {
+        if (statusMsg.domainType() == EmaRdm.MMT_LOGIN) {
             _loginStatus.clear();
             System.out.println(_loginStatus.message(statusMsg).toString());
         }
