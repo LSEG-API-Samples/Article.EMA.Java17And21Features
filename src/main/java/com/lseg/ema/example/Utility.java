@@ -30,10 +30,10 @@ public class Utility {
                   -?\tShows this usage
                   -serviceName service name to request (optional, default: ELEKTRON_DD).
                   -itemNames Comma-separated list of request item names (optional, default: /THB=, example: AUD=,HKD=).
-                  -jwkFile file containing the private JWK encoded in JSON format (mandatory for V2 client credentials grant with JWT).
+                  -jwkFile file containing the private JWK encoded in JSON format (optional for V2 client credentials grant with JWT).
                   -audience Audience value for JWT (optional, for V2 oAuth client credentials with JWT).
-                  -keyfile keystore file for encryption (mandatory).
-                  -keypasswd keystore password for encryption (mandatory).
+                  -keyfile keystore file for encryption (optional).
+                  -keypasswd keystore password for encryption (optional).
                   -securityProvider security provider for encrypted connection (SunJSSE and Conscrypt options are currently supported).
                   -spTLSv1.2 Enable TLS 1.2 security protocol. Default enables both TLS 1.2 and TLS 1.3 (optional).
                   -spTLSv1.3 Enable TLS 1.3 security protocol. Default enables both TLS 1.2 and TLS 1.3 (optional).
@@ -60,7 +60,11 @@ public class Utility {
                         return false;
                     }
                     case "-serviceName" -> serviceName = nextArg(args, i++);
-                    case "-itemNames" -> itemNames = parseItemNames(nextArg(args, i++));
+                    case "-itemNames" -> {
+                        itemNames = parseItemNames(nextArg(args, i++));
+                        if (itemNames.length == 0)
+                            throw new IllegalArgumentException("At least one item name is required.");
+                    }
                     case "-jwkFile" -> loadJwkFile(nextArg(args, i++), config);
                     case "-audience" -> config.audience(audience = nextArg(args, i++));
                     case "-keyfile" -> config.tunnelingKeyStoreFile(nextArg(args, i++));
