@@ -9,36 +9,113 @@
 
 package com.lseg.ema.example;
 
+import java.time.Duration;
+
 import com.refinitiv.ema.access.EmaFactory;
+import com.refinitiv.ema.access.ElementList;
+import com.refinitiv.ema.access.OmmArray;
 import com.refinitiv.ema.access.OmmConsumer;
 import com.refinitiv.ema.access.OmmConsumerConfig;
 import com.refinitiv.ema.access.OmmException;
-import com.refinitiv.ema.access.ElementList;
-import com.refinitiv.ema.access.OmmArray;
+import com.refinitiv.ema.domain.login.Login.LoginReq;
 import com.refinitiv.ema.rdm.EmaRdm;
 
 /**
  * EMA consumer example for Real-Time Optimized (RTO) service.
- * Demonstrates batch item requests with field views over encrypted connection.
+ * Demonstrates single-item and batch requests with field Views over an encrypted connection.
  */
 public class ConsumerRTO {
 
-    // RTO OAuth 2.0 credentials (loaded from environment variables)
-    static String clientId = "";
-    static String clientSecret = "";
+    private static final String CONSUMER_NAME = "Consumer_RTO";
+    private static final String CLIENT_ID_ENVIRONMENT_VARIABLE = "RTO_CLIENTID_V2_1";
+    private static final String CLIENT_SECRET_ENVIRONMENT_VARIABLE = "RTO_CLIENTSECRET_1";
+    private static final Duration RUN_DURATION = Duration.ofMinutes(15);
+
+    // A View Type of 1 means that the View Data contains RDM field IDs.
+    private static final int FIELD_ID_VIEW_TYPE = 1;
+    private static final int VIEW_ENTRY_WIDTH = 2;
+    private static final int[] VIEW_FIELD_IDS = {
+            3,    // DSPLY_NAME
+            11,   // NETCHNG_1
+            22,   // BID
+            25,   // ASK
+            3386, // QUOTE_DATE
+            1025  // QUOTIM
+    };
+
+
+    /** Applies OAuth credentials when their environment variables are defined. */
+    private static void applyEnvironmentCredentials(OmmConsumerConfig config) {
+        String clientId = System.getenv(CLIENT_ID_ENVIRONMENT_VARIABLE);
+        String clientSecret = System.getenv(CLIENT_SECRET_ENVIRONMENT_VARIABLE);
+
+        if (clientId != null && !clientId.isBlank())
+            config.clientId(clientId);
+        if (clientSecret != null && !clientSecret.isBlank())
+            config.clientSecret(clientSecret);
+    }
+
+    /** Registers either a single-item request or a batch request, both with the same View. */
+    private static void registerItemRequest(
+            OmmConsumer consumer,
+            AppClient appClient,
+            String serviceName,
+            String[] itemNames) {
+
+        ElementList payload = createViewPayload();
+
+        switch (itemNames.length) {
+            case 0 -> throw new IllegalArgumentException("At least one item name is required.");
+            case 1 -> consumer.registerClient(
+                    EmaFactory.createReqMsg()
+                            .serviceName(serviceName)
+                            .name(itemNames[0])
+                            .payload(payload),
+                    appClient);
+            default -> {
+                payload.add(EmaFactory.createElementEntry().array(
+                        EmaRdm.ENAME_BATCH_ITEM_LIST,
+                        createBatchItemArray(itemNames)));
+                consumer.registerClient(
+                        EmaFactory.createReqMsg()
+                                .serviceName(serviceName)
+                                .payload(payload),
+                        appClient);
+            }
+        }
+    }
+
+    /** Creates the common field View used by both single-item and batch requests. */
+    private static ElementList createViewPayload() {
+        OmmArray viewData = EmaFactory.createOmmArray();
+        viewData.fixedWidth(VIEW_ENTRY_WIDTH);
+
+        for (int fieldId : VIEW_FIELD_IDS)
+            viewData.add(EmaFactory.createOmmArrayEntry().intValue(fieldId));
+
+        ElementList payload = EmaFactory.createElementList();
+        payload.add(EmaFactory.createElementEntry().uintValue(
+                EmaRdm.ENAME_VIEW_TYPE,
+                FIELD_ID_VIEW_TYPE));
+        payload.add(EmaFactory.createElementEntry().array(
+                EmaRdm.ENAME_VIEW_DATA,
+                viewData));
+        return payload;
+    }
+
+    /** Creates the item-name array required by an EMA batch request. */
+    private static OmmArray createBatchItemArray(String[] itemNames) {
+        OmmArray batchItems = EmaFactory.createOmmArray();
+        for (String itemName : itemNames)
+            batchItems.add(EmaFactory.createOmmArrayEntry().ascii(itemName));
+        return batchItems;
+    }
 
     public static void main(String[] args) {
-        // Load credentials from system environment (RTO_CLIENTID_V2_1, RTO_CLIENTSECRET_1)
-        clientId = System.getenv("RTO_CLIENTID_V2_1");
-        clientSecret = System.getenv("RTO_CLIENTSECRET_1");
-
         OmmConsumer consumer = null;
         try {
             OmmConsumerConfig config = EmaFactory.createOmmConsumerConfig();
-
-            // Apply credentials from system properties into config before parsing args
-            if (clientId != null && !clientId.isEmpty()) config.clientId(clientId);
-            if (clientSecret != null && !clientSecret.isEmpty()) config.clientSecret(clientSecret);
+            applyEnvironmentCredentials(config);
 
             if (!Utility.readCommandlineArgs(args, config))
                 return;
@@ -46,43 +123,24 @@ public class ConsumerRTO {
             AppClient appClient = new AppClient();
 
             // The "Consumer_RTO" uses EncryptedProtocolType::RSSL_SOCKET predefined in EmaConfig.xml
-            consumer = EmaFactory.createOmmConsumer(config.consumerName("Consumer_RTO"));
+            consumer = EmaFactory.createOmmConsumer(config.consumerName(CONSUMER_NAME));
 
-            //Create View
-            OmmArray view_array = EmaFactory.createOmmArray();
-            // Set a fixed size for each array entry to minimize bandwidth, since we know their sizes
-            view_array.fixedWidth(2);
+            // Register to observe the Login stream.
+            LoginReq loginReq = EmaFactory.Domain.createLoginReq();
+            consumer.registerClient(loginReq.message(), appClient);
 
-            // Set the array entries (RDM field IDs to request)
-            view_array.add(EmaFactory.createOmmArrayEntry().intValue(3)); //DSPLY_NAME
-            view_array.add(EmaFactory.createOmmArrayEntry().intValue(11)); //NETCHNG_1
-            view_array.add(EmaFactory.createOmmArrayEntry().intValue(22)); //BID
-            view_array.add(EmaFactory.createOmmArrayEntry().intValue(25)); //ASK
-            view_array.add(EmaFactory.createOmmArrayEntry().intValue(3386)); //QUOTE_DATE
-            view_array.add(EmaFactory.createOmmArrayEntry().intValue(1025)); //QUOTIM
-
-            // Create batch request with item names (from -itemNames arg or default)
-            OmmArray batch_array = EmaFactory.createOmmArray();
-            for (String item: Utility.itemNames) {
-                batch_array.add(EmaFactory.createOmmArrayEntry().ascii(item));
-            }
-
-            // Combine View (which fields) and Batch (which items) into a single payload
-            ElementList payload = EmaFactory.createElementList();
-            payload.add(EmaFactory.createElementEntry().array(EmaRdm.ENAME_BATCH_ITEM_LIST, batch_array));
-            payload.add(EmaFactory.createElementEntry().uintValue(EmaRdm.ENAME_VIEW_TYPE, 1));
-            payload.add(EmaFactory.createElementEntry().array(EmaRdm.ENAME_VIEW_DATA, view_array));
-
-            // Send batch request with view filter to RTO service
-            consumer.registerClient(EmaFactory.createReqMsg().serviceName(Utility.serviceName).payload(payload), appClient);
+            registerItemRequest(consumer, appClient, Utility.serviceName, Utility.itemNames);
 
             // Keep listener active; onRefreshMsg(), onUpdateMsg(), and onStatusMsg() callbacks fire asynchronously
-            Thread.sleep(900000);
-        } catch (InterruptedException | OmmException excp) {
-            System.out.println(excp.getMessage());
+            Thread.sleep(RUN_DURATION);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            System.err.println("Consumer interrupted: " + exception.getMessage());
+        } catch (OmmException exception) {
+            System.err.println(exception.getMessage());
         } finally {
-            // Clean up consumer connection
-            if (consumer != null) consumer.uninitialize();
+            if (consumer != null)
+                consumer.uninitialize();
         }
     }
 }

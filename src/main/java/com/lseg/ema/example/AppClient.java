@@ -20,13 +20,29 @@ import com.refinitiv.ema.access.DataType;
 import com.refinitiv.ema.access.DataType.DataTypes;
 import com.refinitiv.ema.access.FieldEntry;
 import com.refinitiv.ema.access.FieldList;
+import com.refinitiv.ema.access.OmmAscii;
 import com.refinitiv.ema.access.OmmConsumerClient;
 import com.refinitiv.ema.access.OmmConsumerEvent;
-import com.refinitiv.ema.access.Payload;
+import com.refinitiv.ema.access.OmmDate;
+import com.refinitiv.ema.access.OmmEnum;
+import com.refinitiv.ema.access.OmmError;
+import com.refinitiv.ema.access.OmmInt;
+import com.refinitiv.ema.access.OmmReal;
+import com.refinitiv.ema.access.OmmRmtes;
+import com.refinitiv.ema.access.OmmTime;
+import com.refinitiv.ema.access.OmmUInt;
 import java.util.function.Supplier;
+import com.refinitiv.ema.domain.login.Login.LoginRefresh;
+import com.refinitiv.ema.domain.login.Login.LoginStatus;
+import com.refinitiv.ema.access.EmaFactory;
+import com.refinitiv.ema.rdm.EmaRdm;
 
 
 class AppClient implements OmmConsumerClient {
+
+    LoginRefresh _loginRefresh = EmaFactory.Domain.createLoginRefresh();
+    LoginStatus _loginStatus = EmaFactory.Domain.createLoginStatus();
+
     // Shared placeholder for EMA fields that are optional and may be absent in callbacks.
     private static final String NOT_SET = "<not set>";
 
@@ -81,8 +97,16 @@ class AppClient implements OmmConsumerClient {
                 valueOrNotSet(refreshMsg.hasServiceName(), refreshMsg::serviceName));
 
         System.out.printf("Item State: %s%n", refreshMsg.state());
-        //System.out.println(refreshMsg);
-        decodePayloadIfFieldList(refreshMsg.payload());
+
+        if (refreshMsg.domainType() == EmaRdm.MMT_LOGIN)
+        {
+            _loginRefresh.clear();
+            System.out.println(_loginRefresh.message(refreshMsg).toString());
+        }
+        else
+        {
+            decode( refreshMsg );
+        }
 
         System.out.println();
     }
@@ -101,8 +125,7 @@ class AppClient implements OmmConsumerClient {
         printItemAndService(
                 valueOrNotSet(updateMsg.hasName(), updateMsg::name),
                 valueOrNotSet(updateMsg.hasServiceName(), updateMsg::serviceName));
-        //System.out.println(updateMsg);
-        decodePayloadIfFieldList(updateMsg.payload());
+        decode( updateMsg );
 
         System.out.println();
     }
@@ -124,25 +147,41 @@ class AppClient implements OmmConsumerClient {
         if (statusMsg.hasState())
             System.out.println("Item State: " + statusMsg.state());
 
+        if (statusMsg.domainType() == EmaRdm.MMT_LOGIN)
+        {
+            _loginStatus.clear();
+            System.out.println(_loginStatus.message(statusMsg).toString());
+        }
+
         System.out.println();
     }
 
+    @Override
     public void onGenericMsg(GenericMsg genericMsg, OmmConsumerEvent consumerEvent) {
     }
 
+    @Override
     public void onAckMsg(AckMsg ackMsg, OmmConsumerEvent consumerEvent) {
     }
-
+    @Override
     public void onAllMsg(Msg msg, OmmConsumerEvent consumerEvent) {
     }
 
-    private void decodePayloadIfFieldList(Payload payload) {
+    void decode(Msg msg) {
 
-        if (payload.dataType() == DataTypes.FIELD_LIST)
-            decode(payload.fieldList());
+        // A message can contain data in two places: its attributes and its payload.
+        // Only request a FieldList when EMA reports that the container is a FIELD_LIST;
+        // calling fieldList() for another data type would be invalid.
+        if(msg.attrib().dataType() == DataTypes.FIELD_LIST)
+            decodeFieldList(msg.attrib().fieldList());
+
+        // The payload usually contains the item's field values. Decode it separately
+        // because a message may have a payload FieldList even when its attributes do not.
+        if(msg.payload().dataType() == DataTypes.FIELD_LIST)
+            decodeFieldList(msg.payload().fieldList());
     }
 
-    void decode(FieldList fieldList) {
+    void decodeFieldList(FieldList fieldList) {
         fieldList.forEach(fieldEntry -> System.out.printf(
                 "Fid: %d Name = %s DataType: %s Value: %s%n",
                 fieldEntry.fieldId(),
@@ -161,21 +200,19 @@ class AppClient implements OmmConsumerClient {
         if (Data.DataCode.BLANK == fieldEntry.code())
             return "blank";
 
-        return switch (fieldEntry.loadType()) {
-            case DataTypes.REAL -> Double.toString(fieldEntry.real().asDouble());
-            case DataTypes.DATE -> "%d / %d / %d".formatted(
-                    fieldEntry.date().day(), fieldEntry.date().month(), fieldEntry.date().year());
-            case DataTypes.TIME -> "%d:%d:%d:%d".formatted(
-                    fieldEntry.time().hour(), fieldEntry.time().minute(),
-                    fieldEntry.time().second(), fieldEntry.time().millisecond());
-            case DataTypes.INT -> Long.toString(fieldEntry.intValue());
-            case DataTypes.UINT -> Long.toString(fieldEntry.uintValue());
-            case DataTypes.ASCII -> fieldEntry.ascii().toString();
-            case DataTypes.ENUM -> fieldEntry.hasEnumDisplay()
+        return switch (fieldEntry.load()) {
+            case OmmReal real -> Double.toString(real.asDouble());
+            case OmmDate date -> "%d / %d / %d".formatted(date.day(), date.month(), date.year());
+            case OmmTime time -> "%d:%d:%d:%d".formatted(
+                    time.hour(), time.minute(), time.second(), time.millisecond());
+            case OmmInt intValue -> Long.toString(intValue.intValue());
+            case OmmUInt uintValue -> Long.toString(uintValue.longValue());
+            case OmmAscii ascii -> ascii.ascii();
+            case OmmEnum enumValue -> fieldEntry.hasEnumDisplay()
                     ? fieldEntry.enumDisplay()
-                    : Integer.toString(fieldEntry.enumValue());
-            case DataTypes.RMTES -> fieldEntry.rmtes().toString();
-            case DataTypes.ERROR -> "(" + fieldEntry.error().errorCodeAsString() + ")";
+                    : Integer.toString(enumValue.enumValue());
+            case OmmRmtes rmtes -> rmtes.rmtes().toString();
+            case OmmError error -> "(" + error.errorCodeAsString() + ")";
             default -> "";
         };
     }
