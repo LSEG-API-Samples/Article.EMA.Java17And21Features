@@ -156,6 +156,11 @@ When neither TLS version option is supplied, both TLS 1.2 and TLS 1.3 are enable
 - `EmaConfig.xml` — external EMA consumer, channel, and dictionary configuration
 - `pom.xml` — Java 21 compilation, EMA dependency, and executable JAR packaging
 
+## Things To Do Next
+
+- Update code to demonstrate Java 17 sealed classes, records, and pattern matching
+- Update code to demonstrate Java 21 virtual threads, record deconstruction patterns
+
 ## License
 
 Copyright 2020–2026 LSEG.
