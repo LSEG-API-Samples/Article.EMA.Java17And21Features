@@ -10,6 +10,9 @@
 package com.lseg.ema.example;
 
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
 
 import com.refinitiv.ema.access.EmaFactory;
 import com.refinitiv.ema.access.ElementList;
@@ -43,6 +46,50 @@ public class ConsumerRTO {
             1025  // QUOTIM
     };
 
+    private sealed interface ItemRequest permits SingleItemRequest, BatchItemRequest {
+
+        static ItemRequest create(String serviceName, String[] itemNames) {
+            Objects.requireNonNull(itemNames, "Item names must not be null.");
+
+            List<String> validatedItemNames = Arrays.stream(itemNames)
+                    .map(itemName -> requireNonBlank(itemName, "Item name"))
+                    .toList();
+
+            return switch (validatedItemNames.size()) {
+                case 0 -> throw new IllegalArgumentException("At least one item name is required.");
+                case 1 -> new SingleItemRequest(serviceName, validatedItemNames.getFirst());
+                default -> new BatchItemRequest(serviceName, validatedItemNames);
+            };
+        }
+    }
+
+    private record SingleItemRequest(String serviceName, String itemName) implements ItemRequest {
+
+        private SingleItemRequest {
+            serviceName = requireNonBlank(serviceName, "Service name");
+            itemName = requireNonBlank(itemName, "Item name");
+        }
+    }
+
+    private record BatchItemRequest(String serviceName, List<String> itemNames) implements ItemRequest {
+
+        private BatchItemRequest {
+            serviceName = requireNonBlank(serviceName, "Service name");
+            Objects.requireNonNull(itemNames, "Item names must not be null.");
+            itemNames = itemNames.stream()
+                    .map(itemName -> requireNonBlank(itemName, "Item name"))
+                    .toList();
+
+            if (itemNames.size() < 2)
+                throw new IllegalArgumentException("A batch request requires at least two item names.");
+        }
+    }
+
+    private static String requireNonBlank(String value, String description) {
+        if (value == null || value.isBlank())
+            throw new IllegalArgumentException(description + " must not be blank.");
+        return value.strip();
+    }
 
     /** Applies OAuth credentials when their environment variables are defined. */
     private static void applyEnvironmentCredentials(OmmConsumerConfig config) {
@@ -59,20 +106,18 @@ public class ConsumerRTO {
     private static void registerItemRequest(
             OmmConsumer consumer,
             AppClient appClient,
-            String serviceName,
-            String[] itemNames) {
+            ItemRequest itemRequest) {
 
         ElementList payload = createViewPayload();
 
-        switch (itemNames.length) {
-            case 0 -> throw new IllegalArgumentException("At least one item name is required.");
-            case 1 -> consumer.registerClient(
+        switch (itemRequest) {
+            case SingleItemRequest(String serviceName, String itemName) -> consumer.registerClient(
                     EmaFactory.createReqMsg()
                             .serviceName(serviceName)
-                            .name(itemNames[0])
+                            .name(itemName)
                             .payload(payload),
                     appClient);
-            default -> {
+            case BatchItemRequest(String serviceName, List<String> itemNames) -> {
                 payload.add(EmaFactory.createElementEntry().array(
                         EmaRdm.ENAME_BATCH_ITEM_LIST,
                         createBatchItemArray(itemNames)));
@@ -104,7 +149,7 @@ public class ConsumerRTO {
     }
 
     /** Creates the item-name array required by an EMA batch request. */
-    private static OmmArray createBatchItemArray(String[] itemNames) {
+    private static OmmArray createBatchItemArray(List<String> itemNames) {
         OmmArray batchItems = EmaFactory.createOmmArray();
         for (String itemName : itemNames)
             batchItems.add(EmaFactory.createOmmArrayEntry().ascii(itemName));
@@ -121,6 +166,7 @@ public class ConsumerRTO {
                 return;
 
             AppClient appClient = new AppClient();
+            ItemRequest itemRequest = ItemRequest.create(Utility.serviceName, Utility.itemNames);
 
             // The "Consumer_RTO" uses EncryptedProtocolType::RSSL_SOCKET predefined in EmaConfig.xml
             consumer = EmaFactory.createOmmConsumer(config.consumerName(CONSUMER_NAME));
@@ -129,7 +175,7 @@ public class ConsumerRTO {
             LoginReq loginReq = EmaFactory.Domain.createLoginReq();
             consumer.registerClient(loginReq.message(), appClient);
 
-            registerItemRequest(consumer, appClient, Utility.serviceName, Utility.itemNames);
+            registerItemRequest(consumer, appClient, itemRequest);
 
             // Keep listener active; onRefreshMsg(), onUpdateMsg(), and onStatusMsg() callbacks fire asynchronously
             Thread.sleep(RUN_DURATION);
