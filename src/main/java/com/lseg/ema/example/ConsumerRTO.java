@@ -46,8 +46,18 @@ public class ConsumerRTO {
             1025  // QUOTIM
     };
 
+    /** Closed request model that distinguishes single-item requests from batch requests. */
     private sealed interface ItemRequest permits SingleItemRequest, BatchItemRequest {
 
+        /**
+         * Validates and normalizes request values, then selects the record matching the item count.
+         *
+         * @param serviceName service from which to request the items
+         * @param itemNames   item names to request
+         * @return a single-item record for one item, otherwise a batch record
+         * @throws NullPointerException     if {@code itemNames} is {@code null}
+         * @throws IllegalArgumentException if no items are provided or a service or item name is blank
+         */
         static ItemRequest create(String serviceName, String[] itemNames) {
             Objects.requireNonNull(itemNames, "Item names must not be null.");
 
@@ -63,6 +73,12 @@ public class ConsumerRTO {
         }
     }
 
+    /**
+     * Immutable request for exactly one item.
+     *
+     * @param serviceName validated service name
+     * @param itemName    validated item name
+     */
     private record SingleItemRequest(String serviceName, String itemName) implements ItemRequest {
 
         private SingleItemRequest {
@@ -71,11 +87,19 @@ public class ConsumerRTO {
         }
     }
 
+    /**
+     * Immutable request for two or more items.
+     *
+     * @param serviceName validated service name
+     * @param itemNames   validated, immutable item names
+     */
     private record BatchItemRequest(String serviceName, List<String> itemNames) implements ItemRequest {
 
         private BatchItemRequest {
             serviceName = requireNonBlank(serviceName, "Service name");
             Objects.requireNonNull(itemNames, "Item names must not be null.");
+
+            // Rebuild the list so this record never retains caller-owned mutable state.
             itemNames = itemNames.stream()
                     .map(itemName -> requireNonBlank(itemName, "Item name"))
                     .toList();
@@ -85,6 +109,7 @@ public class ConsumerRTO {
         }
     }
 
+    /** Returns a stripped value after rejecting null and whitespace-only input. */
     private static String requireNonBlank(String value, String description) {
         if (value == null || value.isBlank())
             throw new IllegalArgumentException(description + " must not be blank.");
@@ -110,6 +135,7 @@ public class ConsumerRTO {
 
         ElementList payload = createViewPayload();
 
+        // The sealed hierarchy makes this exhaustive; a new request type requires a new branch.
         switch (itemRequest) {
             case SingleItemRequest(String serviceName, String itemName) -> consumer.registerClient(
                     EmaFactory.createReqMsg()
@@ -166,6 +192,8 @@ public class ConsumerRTO {
                 return;
 
             AppClient appClient = new AppClient();
+
+            // Validate request data before creating the consumer and opening the RTO session.
             ItemRequest itemRequest = ItemRequest.create(Utility.serviceName, Utility.itemNames);
 
             // The "Consumer_RTO" uses EncryptedProtocolType::RSSL_SOCKET predefined in EmaConfig.xml
