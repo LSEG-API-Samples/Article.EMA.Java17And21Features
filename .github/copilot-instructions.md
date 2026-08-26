@@ -18,6 +18,14 @@
 - Preserve encrypted RTO session management, single-item and batch requests, field ID views, and login, refresh, update, status, generic, and acknowledgment callback handling.
 - Maintain correct EMA lifecycle cleanup: always uninitialize an `OmmConsumer` that was successfully created, restore interruption status after `InterruptedException`, and do not expose sensitive values in errors or logs.
 
+### ConsumerRTO request model
+
+- Preserve the private sealed `ConsumerRTO.ItemRequest` hierarchy with `SingleItemRequest` and `BatchItemRequest` record implementations unless a requested design change requires additional request types.
+- Construct requests through `ItemRequest.create()`, which rejects null or empty item collections, validates nonblank service and item names, strips surrounding whitespace, and selects the single-item or batch record from the item count.
+- Keep `SingleItemRequest` limited to exactly one item and `BatchItemRequest` limited to at least two items; retain an immutable defensive copy of batch item names.
+- Keep `ConsumerRTO.registerItemRequest()` exhaustive by using a Java 21 record-pattern `switch` over every permitted `ItemRequest` implementation without a redundant `default` branch.
+- Keep the hierarchy nested and private while it is used only by `ConsumerRTO`; extract it only when another component needs the request model or direct package-level testing is required.
+
 ## Credentials and security
 
 - Prefer the `RTO_CLIENTID_V2_1` and `RTO_CLIENTSECRET_1` environment variables for OAuth client credentials.
