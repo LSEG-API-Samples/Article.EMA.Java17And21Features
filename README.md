@@ -10,6 +10,7 @@ The consumer application performs the following features:
 - Single-item and batch requests
 - Field ID views
 - Login, refresh, update, status, generic, and acknowledgment callbacks
+  - Asynchronous Refresh, Update, and Status conversion to JSON with Java 21 virtual threads
 - Packaging the application and its runtime dependencies as one executable JAR
 
 ## Prerequisites
@@ -124,6 +125,46 @@ Request a batch of items:
 java -jar .\target\ema-consumer-java21-1.0.jar -serviceName ELEKTRON_DD -itemNames "AUD=,HKD=,JPY="
 ```
 
+## Virtual-thread JSON processing
+
+EMA invokes the Refresh, Update, and Status callbacks on its dispatch thread. Market-data callbacks
+clone the message immediately and submit it to a bounded in-memory queue; five long-running
+virtual-thread workers drain the queue in batches and write one JSON object per message to standard
+output. The worker executor manages the virtual threads rather than creating a new thread for every
+message. Login Refresh and Login Status messages bypass this pipeline and are printed directly in
+their EMA domain-decoded text representation.
+
+The example defaults in `MessageProcessingPipeline.java` are deliberately easy to find and tune:
+
+| Constant | Default | Purpose |
+|---|---:|---|
+| `WORKER_COUNT` | `5` | Number of concurrent JSON workers. |
+| `QUEUE_CAPACITY` | `1_000` | Maximum number of cloned messages waiting for processing. |
+| `RESERVED_PRIORITY_CAPACITY` | `100` | Queue positions reserved for Refresh and Status messages. |
+| `BATCH_SIZE` | `50` | Maximum messages claimed by a worker per queue operation. |
+
+Updates can occupy at most 900 of the default 1,000 queue positions. When a Refresh or Status
+message arrives to a full queue, the oldest queued Update is evicted. If the full queue contains no
+Update, the incoming priority message is dropped. Shutdown statistics report dropped updates,
+evicted updates, and dropped priority messages without logging every overload event.
+
+Because five workers process concurrently, JSON lines can be emitted in a different order from
+callback arrival. Every line contains a monotonic `sequence` value that identifies arrival order.
+The `itemName` property contains the EMA message name, or `<not set>` when no name is present.
+Field-list attributes and payloads are emitted as structured fields; other EMA container types are
+identified by `dataType`. Each field entry uses `FID` for `fieldEntry.fieldId()` and `FieldName` for
+`fieldEntry.name()`.
+
+During shutdown, `ConsumerRTO` first uninitializes the EMA consumer to stop callbacks, then drains
+the accepted messages and closes the virtual-thread executor.
+
+The implementation separates callback, concurrency, and conversion responsibilities:
+
+- `AppClient.java` handles EMA callbacks, direct login output, and immediate item-message cloning.
+- `MessageProcessingPipeline.java` owns queue admission, priority eviction, batching, virtual
+  workers, overload counters, and shutdown.
+- `EmaJsonConverter.java` performs stateless, worker-safe EMA item-message conversion.
+
 ## Command-line options
 
 | Option | Description |
@@ -151,7 +192,9 @@ When neither TLS version option is supplied, both TLS 1.2 and TLS 1.3 are enable
 
 - `.github/copilot-instructions.md` — repository-wide Copilot guidance for this project
 - `ConsumerRTO.java` — application entry point, credentials, requests, and lifecycle
-- `AppClient.java` — EMA message callback implementation and data decoding
+- `AppClient.java` — EMA callbacks, direct login decoding, and item-message cloning
+- `MessageProcessingPipeline.java` — bounded queue and virtual-thread processing
+- `EmaJsonConverter.java` — stateless EMA item-message JSON conversion
 - `Utility.java` — command-line parsing and optional JWK loading
 - `EmaConfig.xml` — external EMA consumer, channel, and dictionary configuration
 - `pom.xml` — Java 21 compilation, EMA dependency, and executable JAR packaging
@@ -159,7 +202,6 @@ When neither TLS version option is supplied, both TLS 1.2 and TLS 1.3 are enable
 ## Things To Do Next
 
 - Update code to demonstrate Java 17 sealed classes, records, and pattern matching
-- Update code to demonstrate Java 21 virtual threads, record deconstruction patterns
 
 ## License
 

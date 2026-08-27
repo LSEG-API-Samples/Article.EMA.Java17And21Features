@@ -184,6 +184,7 @@ public class ConsumerRTO {
 
     public static void main(String[] args) {
         OmmConsumer consumer = null;
+        AppClient appClient = null;
         try {
             OmmConsumerConfig config = EmaFactory.createOmmConsumerConfig();
             applyEnvironmentCredentials(config);
@@ -191,7 +192,7 @@ public class ConsumerRTO {
             if (!Utility.readCommandlineArgs(args, config))
                 return;
 
-            AppClient appClient = new AppClient();
+            appClient = new AppClient();
 
             // Validate request data before creating the consumer and opening the RTO session.
             ItemRequest itemRequest = ItemRequest.create(Utility.serviceName, Utility.itemNames);
@@ -215,6 +216,8 @@ public class ConsumerRTO {
         } finally {
             if (consumer != null)
                 consumer.uninitialize();
+            if (appClient != null)
+                appClient.close();
         }
     }
 }

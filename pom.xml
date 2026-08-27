@@ -12,6 +12,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <rtsdk.version>3.10.0.1</rtsdk.version>
+        <junit.version>5.13.4</junit.version>
     </properties>
 
     <dependencies>
@@ -19,6 +20,12 @@
             <groupId>com.refinitiv.ema</groupId>
             <artifactId>ema</artifactId>
             <version>${rtsdk.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
