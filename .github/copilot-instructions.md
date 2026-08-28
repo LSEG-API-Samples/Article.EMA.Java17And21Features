@@ -28,6 +28,21 @@
 - Keep `AppClientTest` synchronized with callback behavior. Test domain-decoded Login Refresh and Login Status output, direct state-bearing non-login Status output, and no output for a non-login Status without state.
 - Use try-with-resources for `AppClient` tests so the virtual-thread pipeline is always closed.
 
+### MessageProcessingPipeline behavior
+
+- Keep `MessageProcessingPipeline` focused on bounded queue admission, batching, asynchronous JSON conversion, overload reporting, and graceful shutdown.
+- Preserve the private sealed `QueuedMessage` hierarchy with the `QueuedRefresh` and `QueuedUpdate` record implementations. It intentionally demonstrates Java 17 sealed interfaces and records.
+- Preserve the exhaustive Java 21 pattern-matching `switch` in `messageType()` without adding a redundant `default` branch.
+- Preserve the shared bounded `LinkedBlockingQueue`, drop-newest behavior, monotonic callback sequence, and captured immutable `EventContext`.
+- Preserve batch processing through `BATCH_SIZE` and `drainTo`; do not replace batching with one-message-at-a-time processing unless intentionally changing throughput behavior.
+- Preserve long-running virtual-thread workers managed by `Executors.newVirtualThreadPerTaskExecutor()`.
+- Keep queue admission synchronized with shutdown so a message cannot be accepted after draining has begun.
+- Continue processing accepted messages during normal shutdown until the queue is empty.
+- Keep per-message conversion failures isolated so one failure does not terminate a worker.
+- After `InterruptedException`, restore interruption status with `Thread.currentThread().interrupt()`.
+- Keep worker count, queue capacity, batch size, polling interval, and shutdown timeout as named tuning constants rather than embedding unexplained numeric values.
+- Keep `README.md` synchronized when changing pipeline concurrency, admission, batching, ordering, overload, shutdown, or Java-feature demonstration behavior.
+
 ### ConsumerRTO request model
 
 - Preserve the private sealed `ConsumerRTO.ItemRequest` hierarchy with `SingleItemRequest` and `BatchItemRequest` record implementations unless a requested design change requires additional request types.
@@ -102,12 +117,12 @@
 - Use `Arrays.stream`, `List.of`, and `Map.of` factory methods for immutable collections.
 - Avoid raw types; always supply type parameters.
 
-### Modern Java features (Java 21)
-- Use records for immutable data carriers.
-- Use sealed interfaces and pattern-matching `switch` when modeling closed type hierarchies.
+### Modern Java features
+- Use Java 17 records for immutable data carriers.
+- Use Java 17 sealed interfaces with Java 21 pattern-matching `switch` expressions when modeling closed type hierarchies.
 - Use `String.isBlank()` instead of `isEmpty()` to guard against whitespace-only values.
 - Use text blocks for multi-line string literals (e.g., `printHelp()` output).
-- Use virtual threads (`Thread.startVirtualThread`) for lightweight concurrent tasks where appropriate.
+- Use Java 21 virtual threads for lightweight concurrent tasks where appropriate.
 
 ## Documentation, licensing, and validation
 

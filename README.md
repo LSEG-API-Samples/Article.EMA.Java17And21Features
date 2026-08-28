@@ -9,6 +9,8 @@ The consumer application performs the following features:
 - An encrypted RTO connection with session management
 - Single-item and batch requests
 - Field ID views
+- Java 17 records and a sealed message hierarchy for queued Refresh and Update messages
+- Java 21 exhaustive pattern matching and virtual-thread processing
 - Login, refresh, update, status, generic, and acknowledgment callbacks
   - Asynchronous Refresh and Update conversion to JSON with Java 21 virtual threads
   - Direct login and state-bearing non-login Status output
@@ -145,6 +147,13 @@ The example defaults in `MessageProcessingPipeline.java` are deliberately easy t
 | `QUEUE_CAPACITY` | `1_000` | Maximum number of cloned messages waiting for processing. |
 | `BATCH_SIZE` | `50` | Maximum messages claimed by a worker per queue operation. |
 
+`MessageProcessingPipeline` also demonstrates modern Java language features. Its private sealed
+`QueuedMessage` interface permits only the `QueuedRefresh` and `QueuedUpdate` record
+implementations. Records provide immutable carriers for the message sequence, captured callback
+context, and cloned EMA message. An exhaustive pattern-matching `switch` maps each permitted
+message type to its JSON name without requiring a `default` branch. Sealed interfaces and records
+are Java 17 features; the pattern-matching `switch` used by this project is a Java 21 feature.
+
 Refresh and Update messages share the full queue capacity and are admitted in arrival order. When
 the queue is full, the incoming message is dropped regardless of its type. Shutdown statistics report
 the total number of dropped messages without logging every overload event.
@@ -163,8 +172,8 @@ The implementation separates callback, concurrency, and conversion responsibilit
 
 - `AppClient.java` handles EMA callbacks, direct login Refresh and Status output, and immediate
   Refresh/Update cloning.
-- `MessageProcessingPipeline.java` owns FIFO queue admission, batching, virtual workers, overload
-  counting, and shutdown.
+- `MessageProcessingPipeline.java` owns bounded FIFO queue admission, batch processing, virtual
+  workers, overload counting, shutdown draining, and the sealed queued-message hierarchy.
 - `EmaJsonConverter.java` performs stateless, worker-safe EMA item-message conversion.
 
 ## Command-line options
@@ -201,9 +210,11 @@ When neither TLS version option is supplied, both TLS 1.2 and TLS 1.3 are enable
 - `EmaConfig.xml` — external EMA consumer, channel, and dictionary configuration
 - `pom.xml` — Java 21 compilation, EMA dependency, and executable JAR packaging
 
-## Things To Do Next
+## Java feature demonstration
 
-- Update code to demonstrate Java 17 sealed classes, records, and pattern matching
+`MessageProcessingPipeline` demonstrates Java 17 records and sealed interfaces through its closed
+Refresh/Update queue model. It also uses a Java 21 exhaustive pattern-matching `switch` and Java 21
+virtual threads for asynchronous batch processing.
 
 ## License
 

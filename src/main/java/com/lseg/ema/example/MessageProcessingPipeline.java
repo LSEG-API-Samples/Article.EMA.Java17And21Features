@@ -69,7 +69,7 @@ final class MessageProcessingPipeline implements AutoCloseable {
         this.outputConsumer = Objects.requireNonNull(outputConsumer, "Output consumer must not be null.");
         this.workerExecutor = Executors.newVirtualThreadPerTaskExecutor();
         for (int workerIndex = 0; workerIndex < workerCount; workerIndex++)
-            workerExecutor.submit(this::processMessages);
+            workerExecutor.submit(this::processBatches);
     }
 
     /** Submits a cloned Refresh for asynchronous processing. */
@@ -88,7 +88,7 @@ final class MessageProcessingPipeline implements AutoCloseable {
                 updateMsg));
     }
 
-    /** Adds a message when queue capacity remains, regardless of its type. */
+    /** Adds a message to the queue, or counts it as dropped when no capacity remains. */
     private void enqueue(QueuedMessage queuedMessage) {
         synchronized (admissionLock) {
             if (closing || !messageQueue.offer(queuedMessage))
@@ -96,20 +96,20 @@ final class MessageProcessingPipeline implements AutoCloseable {
         }
     }
 
-    /** Polls and converts message batches until shutdown has drained the queue. */
-    private void processMessages() {
+    /** Processes messages in batches until shutdown has drained the queue. */
+    private void processBatches() {
         List<QueuedMessage> batch = new ArrayList<>(BATCH_SIZE);
         try {
             while (!closing || !messageQueue.isEmpty()) {
-                QueuedMessage firstMessage = messageQueue.poll(
+                QueuedMessage queuedMessage = messageQueue.poll(
                         WORKER_POLL_INTERVAL.toMillis(),
                         TimeUnit.MILLISECONDS);
-                if (firstMessage == null)
+                if (queuedMessage == null)
                     continue;
 
-                batch.add(firstMessage);
+                batch.add(queuedMessage);
                 messageQueue.drainTo(batch, BATCH_SIZE - 1);
-                batch.forEach(this::writeJson);
+                batch.forEach(this::convertAndWrite);
                 batch.clear();
             }
         } catch (InterruptedException exception) {
@@ -117,16 +117,16 @@ final class MessageProcessingPipeline implements AutoCloseable {
         }
     }
 
-    /** Converts and writes one queued message without terminating its worker on failure. */
-    private void writeJson(QueuedMessage queuedMessage) {
+    /** Converts and writes one message without allowing a failure to stop its worker. */
+    private void convertAndWrite(QueuedMessage queuedMessage) {
         try {
-            EventContext event = queuedMessage.eventContext();
+            EventContext context = queuedMessage.eventContext();
             outputConsumer.accept(EmaJsonConverter.toJson(
                     queuedMessage.sequence(),
                     messageType(queuedMessage),
-                    event.handle(),
-                    event.parentHandle(),
-                    event.closure(),
+                    context.handle(),
+                    context.parentHandle(),
+                    context.closure(),
                     queuedMessage.message()));
         } catch (RuntimeException exception) {
             System.err.printf(
@@ -136,7 +136,7 @@ final class MessageProcessingPipeline implements AutoCloseable {
         }
     }
 
-    /** Returns the readable type of a queued message. */
+    /** Returns the readable message type included in the JSON output. */
     private static String messageType(QueuedMessage queuedMessage) {
         return switch (queuedMessage) {
             case QueuedRefresh ignored -> "Refresh";
@@ -166,38 +166,33 @@ final class MessageProcessingPipeline implements AutoCloseable {
         System.err.printf("JSON queue summary: dropped messages=%d%n", droppedMessages.get());
     }
 
-    /** Common data exposed by every queued EMA message. */
+    /** Defines the data shared by every queued EMA message. */
     private sealed interface QueuedMessage permits QueuedRefresh, QueuedUpdate {
-
-        /** Returns the callback arrival sequence. */
         long sequence();
 
-        /** Returns immutable callback metadata. */
         EventContext eventContext();
 
-        /** Returns the cloned EMA message. */
         Msg message();
     }
 
-    /** A queued item Refresh. */
+    /** Stores a cloned Refresh and its captured callback details. */
     private record QueuedRefresh(
             long sequence,
             EventContext eventContext,
             RefreshMsg message) implements QueuedMessage {
     }
 
-    /** A queued item Update. */
+    /** Stores a cloned Update and its captured callback details. */
     private record QueuedUpdate(
             long sequence,
             EventContext eventContext,
             UpdateMsg message) implements QueuedMessage {
     }
 
-
-    /** Immutable callback metadata that is safe to use after callback return. */
+    /** Stores callback details that remain safe to use after the callback returns. */
     private record EventContext(long handle, long parentHandle, String closure) {
 
-        /** Captures event values without retaining the EMA callback object. */
+        /** Copies callback details without retaining the EMA event object. */
         private static EventContext capture(OmmConsumerEvent event) {
             return new EventContext(event.handle(), event.parentHandle(), String.valueOf(event.closure()));
         }
