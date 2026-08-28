@@ -18,6 +18,16 @@
 - Preserve encrypted RTO session management, single-item and batch requests, field ID views, and login, refresh, update, status, generic, and acknowledgment callback handling.
 - Maintain correct EMA lifecycle cleanup: always uninitialize an `OmmConsumer` that was successfully created, restore interruption status after `InterruptedException`, and do not expose sensitive values in errors or logs.
 
+### AppClient callback and test behavior
+
+- Preserve direct login handling in `AppClient`: decode Login Refresh and Login Status messages with EMA domain objects and send their text to `outputConsumer`.
+- Append `"\n"` to directly emitted Login Refresh, Login Status, and non-login Status text.
+- Continue cloning non-login Refresh and Update messages immediately and submitting them to `MessageProcessingPipeline` for asynchronous JSON conversion.
+- Keep all Status messages outside `MessageProcessingPipeline` and `EmaJsonConverter`.
+- For non-login Status callbacks, emit `statusMsg.toString()` only when `statusMsg.hasState()` is `true`; ignore non-login Status messages without state.
+- Keep `AppClientTest` synchronized with callback behavior. Test domain-decoded Login Refresh and Login Status output, direct state-bearing non-login Status output, and no output for a non-login Status without state.
+- Use try-with-resources for `AppClient` tests so the virtual-thread pipeline is always closed.
+
 ### ConsumerRTO request model
 
 - Preserve the private sealed `ConsumerRTO.ItemRequest` hierarchy with `SingleItemRequest` and `BatchItemRequest` record implementations unless a requested design change requires additional request types.

@@ -10,7 +10,8 @@ The consumer application performs the following features:
 - Single-item and batch requests
 - Field ID views
 - Login, refresh, update, status, generic, and acknowledgment callbacks
-  - Asynchronous Refresh, Update, and Status conversion to JSON with Java 21 virtual threads
+  - Asynchronous Refresh and Update conversion to JSON with Java 21 virtual threads
+  - Direct login and state-bearing non-login Status output
 - Packaging the application and its runtime dependencies as one executable JAR
 
 ## Prerequisites
@@ -127,12 +128,14 @@ java -jar .\target\ema-consumer-java21-1.0.jar -serviceName ELEKTRON_DD -itemNam
 
 ## Virtual-thread JSON processing
 
-EMA invokes the Refresh, Update, and Status callbacks on its dispatch thread. Market-data callbacks
-clone the message immediately and submit it to a bounded in-memory queue; five long-running
-virtual-thread workers drain the queue in batches and write one JSON object per message to standard
-output. The worker executor manages the virtual threads rather than creating a new thread for every
-message. Login Refresh and Login Status messages bypass this pipeline and are printed directly in
-their EMA domain-decoded text representation.
+EMA invokes the Refresh, Update, and Status callbacks on its dispatch thread. Refresh and Update
+callbacks clone the message immediately and submit it to a bounded in-memory queue; five
+long-running virtual-thread workers drain the queue in batches and write one JSON object per message
+to standard output. The worker executor manages the virtual threads rather than creating a new
+thread for every message. Login Refresh and Login Status messages bypass this pipeline and are
+printed in their EMA domain-decoded text representation. Non-login Status messages with state are
+printed directly in their original EMA text representation; non-login Status messages without state
+are ignored. Status messages are never routed through data processing.
 
 The example defaults in `MessageProcessingPipeline.java` are deliberately easy to find and tune:
 
@@ -140,13 +143,11 @@ The example defaults in `MessageProcessingPipeline.java` are deliberately easy t
 |---|---:|---|
 | `WORKER_COUNT` | `5` | Number of concurrent JSON workers. |
 | `QUEUE_CAPACITY` | `1_000` | Maximum number of cloned messages waiting for processing. |
-| `RESERVED_PRIORITY_CAPACITY` | `100` | Queue positions reserved for Refresh and Status messages. |
 | `BATCH_SIZE` | `50` | Maximum messages claimed by a worker per queue operation. |
 
-Updates can occupy at most 900 of the default 1,000 queue positions. When a Refresh or Status
-message arrives to a full queue, the oldest queued Update is evicted. If the full queue contains no
-Update, the incoming priority message is dropped. Shutdown statistics report dropped updates,
-evicted updates, and dropped priority messages without logging every overload event.
+Refresh and Update messages share the full queue capacity and are admitted in arrival order. When
+the queue is full, the incoming message is dropped regardless of its type. Shutdown statistics report
+the total number of dropped messages without logging every overload event.
 
 Because five workers process concurrently, JSON lines can be emitted in a different order from
 callback arrival. Every line contains a monotonic `sequence` value that identifies arrival order.
@@ -160,9 +161,10 @@ the accepted messages and closes the virtual-thread executor.
 
 The implementation separates callback, concurrency, and conversion responsibilities:
 
-- `AppClient.java` handles EMA callbacks, direct login output, and immediate item-message cloning.
-- `MessageProcessingPipeline.java` owns queue admission, priority eviction, batching, virtual
-  workers, overload counters, and shutdown.
+- `AppClient.java` handles EMA callbacks, direct login Refresh and Status output, and immediate
+  Refresh/Update cloning.
+- `MessageProcessingPipeline.java` owns FIFO queue admission, batching, virtual workers, overload
+  counting, and shutdown.
 - `EmaJsonConverter.java` performs stateless, worker-safe EMA item-message conversion.
 
 ## Command-line options
@@ -192,7 +194,7 @@ When neither TLS version option is supplied, both TLS 1.2 and TLS 1.3 are enable
 
 - `.github/copilot-instructions.md` — repository-wide Copilot guidance for this project
 - `ConsumerRTO.java` — application entry point, credentials, requests, and lifecycle
-- `AppClient.java` — EMA callbacks, direct login decoding, and item-message cloning
+- `AppClient.java` — EMA callbacks, direct Status output, login Refresh decoding, and data-message cloning
 - `MessageProcessingPipeline.java` — bounded queue and virtual-thread processing
 - `EmaJsonConverter.java` — stateless EMA item-message JSON conversion
 - `Utility.java` — command-line parsing and optional JWK loading

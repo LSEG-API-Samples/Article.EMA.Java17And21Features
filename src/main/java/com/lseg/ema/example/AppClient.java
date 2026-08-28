@@ -24,7 +24,7 @@ import com.refinitiv.ema.domain.login.Login.LoginRefresh;
 import com.refinitiv.ema.domain.login.Login.LoginStatus;
 import com.refinitiv.ema.rdm.EmaRdm;
 
-/** Handles EMA callbacks and delegates cloned item messages to the processing pipeline. */
+/** Handles EMA callbacks and delegates cloned data messages to the processing pipeline. */
 class AppClient implements OmmConsumerClient, AutoCloseable {
 
     private final LoginRefresh loginRefresh = EmaFactory.Domain.createLoginRefresh();
@@ -38,13 +38,9 @@ class AppClient implements OmmConsumerClient, AutoCloseable {
     }
 
     /** Creates the callback client with explicit pipeline settings for focused tests. */
-    AppClient(int workerCount, int queueCapacity, int reservedPriorityCapacity, Consumer<String> outputConsumer) {
+    AppClient(int workerCount, int queueCapacity, Consumer<String> outputConsumer) {
         this.outputConsumer = Objects.requireNonNull(outputConsumer, "Output consumer must not be null.");
-        this.pipeline = new MessageProcessingPipeline(
-                workerCount,
-                queueCapacity,
-                reservedPriorityCapacity,
-                outputConsumer);
+        this.pipeline = new MessageProcessingPipeline(workerCount, queueCapacity, outputConsumer);
     }
 
     /** Creates the callback client with default pipeline settings and a selected output. */
@@ -58,7 +54,7 @@ class AppClient implements OmmConsumerClient, AutoCloseable {
     public void onRefreshMsg(RefreshMsg refreshMsg, OmmConsumerEvent event) {
         if (refreshMsg.domainType() == EmaRdm.MMT_LOGIN) {
             loginRefresh.clear();
-            outputConsumer.accept(loginRefresh.message(refreshMsg).toString());
+            outputConsumer.accept(loginRefresh.message(refreshMsg).toString() + "\n");
             return;
         }
 
@@ -71,16 +67,16 @@ class AppClient implements OmmConsumerClient, AutoCloseable {
         pipeline.submitUpdate(EmaFactory.createUpdateMsg(updateMsg), event);
     }
 
-    /** Decodes login Statuses directly and queues cloned item Statuses. */
+    /** Prints login Statuses and state-bearing non-login Statuses without data processing. */
     @Override
     public void onStatusMsg(StatusMsg statusMsg, OmmConsumerEvent event) {
         if (statusMsg.domainType() == EmaRdm.MMT_LOGIN) {
             loginStatus.clear();
-            outputConsumer.accept(loginStatus.message(statusMsg).toString());
-            return;
+            outputConsumer.accept(loginStatus.message(statusMsg).toString() + "\n");
+        } else if (statusMsg.hasState()) {
+            outputConsumer.accept(statusMsg.toString() + "\n");
         }
 
-        pipeline.submitStatus(EmaFactory.createStatusMsg(statusMsg), event);
     }
 
     /** Receives Generic messages; this example does not process them. */
