@@ -25,7 +25,6 @@ import com.refinitiv.ema.access.OmmState;
 import com.refinitiv.ema.access.OmmTime;
 import com.refinitiv.ema.access.OmmUInt;
 import com.refinitiv.ema.access.RefreshMsg;
-import com.refinitiv.ema.access.StatusMsg;
 import com.refinitiv.ema.access.UpdateMsg;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -70,15 +69,8 @@ final class EmaJsonConverter {
                 .put("itemName", msg.hasName() ? msg.name() : NOT_SET)
                 .put("serviceName", serviceName != null ? serviceName : JSONObject.NULL);
 
-        switch (msg) {
-            case RefreshMsg refreshMsg -> json.put("state", stateToJson(refreshMsg.state()));
-            case StatusMsg statusMsg -> {
-                if (statusMsg.hasState())
-                    json.put("state", stateToJson(statusMsg.state()));
-            }
-            default -> {
-            }
-        }
+        if (msg instanceof RefreshMsg refreshMsg)
+            json.put("state", stateToJson(refreshMsg.state()));
 
         json.put("attributes", containerToJson(
                 msg.attrib().dataType(),
@@ -94,7 +86,6 @@ final class EmaJsonConverter {
         return switch (msg) {
             case RefreshMsg refreshMsg -> refreshMsg.hasServiceName() ? refreshMsg.serviceName() : null;
             case UpdateMsg updateMsg -> updateMsg.hasServiceName() ? updateMsg.serviceName() : null;
-            case StatusMsg statusMsg -> statusMsg.hasServiceName() ? statusMsg.serviceName() : null;
             default -> null;
         };
     }

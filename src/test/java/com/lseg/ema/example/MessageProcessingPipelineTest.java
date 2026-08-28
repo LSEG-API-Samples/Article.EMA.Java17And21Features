@@ -70,7 +70,6 @@ class MessageProcessingPipelineTest {
                     .name("R1")
                     .state(StreamState.OPEN, DataState.OK, StatusCode.NONE, "open")
                     .complete(true), EVENT);
-            pipeline.submitStatus(EmaFactory.createStatusMsg().name("S1"), EVENT);
             releaseWorker.countDown();
         }
 
@@ -81,7 +80,6 @@ class MessageProcessingPipelineTest {
         assertTrue(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U4\"")));
         assertFalse(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U5\"")));
         assertFalse(output.stream().anyMatch(json -> json.contains("\"type\":\"Refresh\"")));
-        assertFalse(output.stream().anyMatch(json -> json.contains("\"type\":\"Status\"")));
         assertTrue(output.stream()
                 .map(JSONObject::new)
                 .allMatch(json -> "test\"closure\n".equals(json.getString("closure"))));

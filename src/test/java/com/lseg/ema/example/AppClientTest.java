@@ -10,6 +10,7 @@ package com.lseg.ema.example;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,7 +27,7 @@ import com.refinitiv.ema.access.RefreshMsg;
 import com.refinitiv.ema.access.StatusMsg;
 import com.refinitiv.ema.rdm.EmaRdm;
 
-/** Tests direct login handling performed by the EMA callback client. */
+/** Tests direct message handling performed by the EMA callback client. */
 class AppClientTest {
 
     private static final OmmConsumerEvent EVENT = new TestConsumerEvent("login-test");
@@ -47,7 +48,7 @@ class AppClientTest {
             client.onRefreshMsg(loginRefresh, EVENT);
         }
 
-        assertEquals(List.of(expectedOutput), output);
+        assertEquals(List.of(expectedOutput + "\n"), output);
         assertFalse(output.getFirst().contains("\"sequence\""));
     }
 
@@ -66,7 +67,36 @@ class AppClientTest {
             client.onStatusMsg(loginStatus, EVENT);
         }
 
-        assertEquals(List.of(expectedOutput), output);
+        assertEquals(List.of(expectedOutput + "\n"), output);
         assertFalse(output.getFirst().contains("\"sequence\""));
+    }
+
+    /** Verifies that an item Status with state is printed instead of entering the JSON pipeline. */
+    @Test
+    void printsItemStatusWithStateAsIs() {
+        List<String> output = Collections.synchronizedList(new ArrayList<>());
+        StatusMsg itemStatus = EmaFactory.createStatusMsg()
+                .name("TRI.N")
+                .state(StreamState.OPEN, DataState.SUSPECT, StatusCode.NONE, "item suspect");
+
+        try (AppClient client = new AppClient(1, 10, output::add)) {
+            client.onStatusMsg(itemStatus, EVENT);
+        }
+
+        assertEquals(List.of(itemStatus.toString() + "\n"), output);
+        assertFalse(output.getFirst().contains("\"sequence\""));
+    }
+
+    /** Verifies that a non-login Status without state is ignored. */
+    @Test
+    void ignoresItemStatusWithoutState() {
+        List<String> output = Collections.synchronizedList(new ArrayList<>());
+        StatusMsg itemStatus = EmaFactory.createStatusMsg().name("TRI.N");
+
+        try (AppClient client = new AppClient(1, 10, output::add)) {
+            client.onStatusMsg(itemStatus, EVENT);
+        }
+
+        assertTrue(output.isEmpty());
     }
 }

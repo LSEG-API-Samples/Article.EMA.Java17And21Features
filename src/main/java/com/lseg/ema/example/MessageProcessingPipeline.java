@@ -22,7 +22,6 @@ import java.util.function.Consumer;
 import com.refinitiv.ema.access.Msg;
 import com.refinitiv.ema.access.OmmConsumerEvent;
 import com.refinitiv.ema.access.RefreshMsg;
-import com.refinitiv.ema.access.StatusMsg;
 import com.refinitiv.ema.access.UpdateMsg;
 
 /** Processes cloned EMA item messages on bounded virtual-thread workers. */
@@ -89,14 +88,6 @@ final class MessageProcessingPipeline implements AutoCloseable {
                 updateMsg));
     }
 
-    /** Submits a cloned Status for asynchronous processing. */
-    void submitStatus(StatusMsg statusMsg, OmmConsumerEvent event) {
-        enqueue(new QueuedStatus(
-                sequence.incrementAndGet(),
-                EventContext.capture(event),
-                statusMsg));
-    }
-
     /** Adds a message when queue capacity remains, regardless of its type. */
     private void enqueue(QueuedMessage queuedMessage) {
         synchronized (admissionLock) {
@@ -150,7 +141,6 @@ final class MessageProcessingPipeline implements AutoCloseable {
         return switch (queuedMessage) {
             case QueuedRefresh ignored -> "Refresh";
             case QueuedUpdate ignored -> "Update";
-            case QueuedStatus ignored -> "Status";
         };
     }
 
@@ -177,7 +167,7 @@ final class MessageProcessingPipeline implements AutoCloseable {
     }
 
     /** Common data exposed by every queued EMA message. */
-    private sealed interface QueuedMessage permits QueuedRefresh, QueuedUpdate, QueuedStatus {
+    private sealed interface QueuedMessage permits QueuedRefresh, QueuedUpdate {
 
         /** Returns the callback arrival sequence. */
         long sequence();
@@ -203,12 +193,6 @@ final class MessageProcessingPipeline implements AutoCloseable {
             UpdateMsg message) implements QueuedMessage {
     }
 
-    /** A queued item Status. */
-    private record QueuedStatus(
-            long sequence,
-            EventContext eventContext,
-            StatusMsg message) implements QueuedMessage {
-    }
 
     /** Immutable callback metadata that is safe to use after callback return. */
     private record EventContext(long handle, long parentHandle, String closure) {

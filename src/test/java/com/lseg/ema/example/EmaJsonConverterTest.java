@@ -25,15 +25,14 @@ import com.refinitiv.ema.access.OmmState.StreamState;
 /** Tests the stateless EMA item-message JSON schema. */
 class EmaJsonConverterTest {
 
-    /** Verifies the item-name fallback for every supported message type. */
+    /** Verifies the item-name fallback for every queued message type. */
     @Test
     void usesNotSetItemNameForUnnamedMessages() {
         List<Msg> messages = List.of(
                 EmaFactory.createRefreshMsg()
                         .state(StreamState.OPEN, DataState.OK, StatusCode.NONE, "open")
                         .complete(true),
-                EmaFactory.createUpdateMsg(),
-                EmaFactory.createStatusMsg());
+                EmaFactory.createUpdateMsg());
 
         assertTrue(messages.stream()
                 .map(message -> convert("Item", message))
