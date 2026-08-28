@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -28,126 +28,80 @@ import com.refinitiv.ema.access.UpdateMsg;
 /** Processes cloned EMA item messages on bounded virtual-thread workers. */
 final class MessageProcessingPipeline implements AutoCloseable {
 
-    // These example values can be tuned for the expected update rate and available memory.
+    // These example values can be tuned for the expected message rate and available memory.
     private static final int WORKER_COUNT = 5;
     private static final int QUEUE_CAPACITY = 1_000;
-    private static final int RESERVED_PRIORITY_CAPACITY = 100;
     private static final int BATCH_SIZE = 50;
     private static final Duration WORKER_POLL_INTERVAL = Duration.ofMillis(100);
     private static final Duration SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
 
-    private final LinkedBlockingDeque<QueuedMessage> messageQueue;
+    private final LinkedBlockingQueue<QueuedMessage> messageQueue;
     private final ExecutorService workerExecutor;
     private final AtomicLong sequence = new AtomicLong();
-    private final AtomicLong droppedUpdates = new AtomicLong();
-    private final AtomicLong evictedUpdates = new AtomicLong();
-    private final AtomicLong droppedPriorityMessages = new AtomicLong();
+    private final AtomicLong droppedMessages = new AtomicLong();
     private final Object admissionLock = new Object();
     private final Consumer<String> outputConsumer;
-    private final int updateCapacity;
 
-    private int queuedUpdateCount;
     private volatile boolean closing;
 
     /** Creates a pipeline using the documented example tuning values. */
     MessageProcessingPipeline(Consumer<String> outputConsumer) {
-        this(WORKER_COUNT, QUEUE_CAPACITY, RESERVED_PRIORITY_CAPACITY, outputConsumer);
+        this(WORKER_COUNT, QUEUE_CAPACITY, outputConsumer);
     }
 
     /**
      * Creates a pipeline with explicit worker and queue settings.
      *
-     * @param workerCount              number of long-running virtual workers
-     * @param queueCapacity            maximum queued message count
-     * @param reservedPriorityCapacity positions unavailable to updates
-     * @param outputConsumer           destination for complete JSON strings
+     * @param workerCount    number of long-running virtual workers
+     * @param queueCapacity  maximum queued message count
+     * @param outputConsumer destination for complete JSON strings
      */
     MessageProcessingPipeline(
             int workerCount,
             int queueCapacity,
-            int reservedPriorityCapacity,
             Consumer<String> outputConsumer) {
 
         if (workerCount < 1)
             throw new IllegalArgumentException("Worker count must be at least one.");
         if (queueCapacity < 1)
             throw new IllegalArgumentException("Queue capacity must be at least one.");
-        if (reservedPriorityCapacity < 0 || reservedPriorityCapacity > queueCapacity)
-            throw new IllegalArgumentException("Reserved capacity must be between zero and queue capacity.");
 
-        this.messageQueue = new LinkedBlockingDeque<>(queueCapacity);
-        this.updateCapacity = queueCapacity - reservedPriorityCapacity;
+        this.messageQueue = new LinkedBlockingQueue<>(queueCapacity);
         this.outputConsumer = Objects.requireNonNull(outputConsumer, "Output consumer must not be null.");
         this.workerExecutor = Executors.newVirtualThreadPerTaskExecutor();
         for (int workerIndex = 0; workerIndex < workerCount; workerIndex++)
             workerExecutor.submit(this::processMessages);
     }
 
-    /** Submits a cloned Refresh as a priority message. */
+    /** Submits a cloned Refresh for asynchronous processing. */
     void submitRefresh(RefreshMsg refreshMsg, OmmConsumerEvent event) {
-        enqueuePriority(new QueuedRefresh(
+        enqueue(new QueuedRefresh(
                 sequence.incrementAndGet(),
                 EventContext.capture(event),
                 refreshMsg));
     }
 
-    /** Submits a cloned Update while preserving priority queue capacity. */
+    /** Submits a cloned Update for asynchronous processing. */
     void submitUpdate(UpdateMsg updateMsg, OmmConsumerEvent event) {
-        enqueueUpdate(new QueuedUpdate(
+        enqueue(new QueuedUpdate(
                 sequence.incrementAndGet(),
                 EventContext.capture(event),
                 updateMsg));
     }
 
-    /** Submits a cloned Status as a priority message. */
+    /** Submits a cloned Status for asynchronous processing. */
     void submitStatus(StatusMsg statusMsg, OmmConsumerEvent event) {
-        enqueuePriority(new QueuedStatus(
+        enqueue(new QueuedStatus(
                 sequence.incrementAndGet(),
                 EventContext.capture(event),
                 statusMsg));
     }
 
-    /** Adds an Update only when non-reserved queue capacity remains. */
-    private void enqueueUpdate(QueuedUpdate update) {
+    /** Adds a message when queue capacity remains, regardless of its type. */
+    private void enqueue(QueuedMessage queuedMessage) {
         synchronized (admissionLock) {
-            if (closing || queuedUpdateCount >= updateCapacity || !messageQueue.offerLast(update)) {
-                droppedUpdates.incrementAndGet();
-                return;
-            }
-
-            queuedUpdateCount++;
-        }
-    }
-
-    /** Adds priority traffic, evicting the oldest queued Update when necessary. */
-    private void enqueuePriority(QueuedMessage priorityMessage) {
-        synchronized (admissionLock) {
-            if (closing) {
-                droppedPriorityMessages.incrementAndGet();
-                return;
-            }
-
-            if (messageQueue.offerLast(priorityMessage))
-                return;
-
-            QueuedUpdate oldestUpdate = messageQueue.stream()
-                    .filter(QueuedUpdate.class::isInstance)
-                    .map(QueuedUpdate.class::cast)
-                    .findFirst()
-                    .orElse(null);
-
-            if (oldestUpdate != null && messageQueue.remove(oldestUpdate)) {
-                queuedUpdateCount--;
-                evictedUpdates.incrementAndGet();
-                if (messageQueue.offerLast(priorityMessage))
-                    return;
-            }
-
-            // A worker may have removed the selected update between the scan and removal.
-            if (messageQueue.offerLast(priorityMessage))
-                return;
-
-            droppedPriorityMessages.incrementAndGet();
+            if (closing || !messageQueue.offer(queuedMessage))
+                droppedMessages.incrementAndGet();
         }
     }
 
@@ -156,7 +110,7 @@ final class MessageProcessingPipeline implements AutoCloseable {
         List<QueuedMessage> batch = new ArrayList<>(BATCH_SIZE);
         try {
             while (!closing || !messageQueue.isEmpty()) {
-                QueuedMessage firstMessage = messageQueue.pollFirst(
+                QueuedMessage firstMessage = messageQueue.poll(
                         WORKER_POLL_INTERVAL.toMillis(),
                         TimeUnit.MILLISECONDS);
                 if (firstMessage == null)
@@ -164,23 +118,11 @@ final class MessageProcessingPipeline implements AutoCloseable {
 
                 batch.add(firstMessage);
                 messageQueue.drainTo(batch, BATCH_SIZE - 1);
-                updateQueueAccounting(batch);
                 batch.forEach(this::writeJson);
                 batch.clear();
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-        }
-    }
-
-    /** Updates admission accounting after workers claim a batch. */
-    private void updateQueueAccounting(List<QueuedMessage> batch) {
-        long removedUpdates = batch.stream().filter(QueuedUpdate.class::isInstance).count();
-        if (removedUpdates == 0)
-            return;
-
-        synchronized (admissionLock) {
-            queuedUpdateCount -= Math.toIntExact(removedUpdates);
         }
     }
 
@@ -212,7 +154,7 @@ final class MessageProcessingPipeline implements AutoCloseable {
         };
     }
 
-    /** Drains accepted messages, stops workers, and reports overload totals. */
+    /** Drains accepted messages, stops workers, and reports the overload total. */
     @Override
     public void close() {
         synchronized (admissionLock) {
@@ -231,11 +173,7 @@ final class MessageProcessingPipeline implements AutoCloseable {
             Thread.currentThread().interrupt();
         }
 
-        System.err.printf(
-                "JSON queue summary: dropped updates=%d, evicted updates=%d, dropped refresh/status=%d%n",
-                droppedUpdates.get(),
-                evictedUpdates.get(),
-                droppedPriorityMessages.get());
+        System.err.printf("JSON queue summary: dropped messages=%d%n", droppedMessages.get());
     }
 
     /** Common data exposed by every queued EMA message. */

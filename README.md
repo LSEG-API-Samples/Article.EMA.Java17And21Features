@@ -140,13 +140,11 @@ The example defaults in `MessageProcessingPipeline.java` are deliberately easy t
 |---|---:|---|
 | `WORKER_COUNT` | `5` | Number of concurrent JSON workers. |
 | `QUEUE_CAPACITY` | `1_000` | Maximum number of cloned messages waiting for processing. |
-| `RESERVED_PRIORITY_CAPACITY` | `100` | Queue positions reserved for Refresh and Status messages. |
 | `BATCH_SIZE` | `50` | Maximum messages claimed by a worker per queue operation. |
 
-Updates can occupy at most 900 of the default 1,000 queue positions. When a Refresh or Status
-message arrives to a full queue, the oldest queued Update is evicted. If the full queue contains no
-Update, the incoming priority message is dropped. Shutdown statistics report dropped updates,
-evicted updates, and dropped priority messages without logging every overload event.
+Refresh, Update, and Status messages share the full queue capacity and are admitted in arrival order.
+When the queue is full, the incoming message is dropped regardless of its type. Shutdown statistics
+report the total number of dropped messages without logging every overload event.
 
 Because five workers process concurrently, JSON lines can be emitted in a different order from
 callback arrival. Every line contains a monotonic `sequence` value that identifies arrival order.
@@ -161,8 +159,8 @@ the accepted messages and closes the virtual-thread executor.
 The implementation separates callback, concurrency, and conversion responsibilities:
 
 - `AppClient.java` handles EMA callbacks, direct login output, and immediate item-message cloning.
-- `MessageProcessingPipeline.java` owns queue admission, priority eviction, batching, virtual
-  workers, overload counters, and shutdown.
+- `MessageProcessingPipeline.java` owns FIFO queue admission, batching, virtual workers, overload
+  counting, and shutdown.
 - `EmaJsonConverter.java` performs stateless, worker-safe EMA item-message conversion.
 
 ## Command-line options

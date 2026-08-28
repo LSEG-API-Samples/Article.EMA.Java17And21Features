@@ -29,7 +29,7 @@ import com.refinitiv.ema.access.OmmState.DataState;
 import com.refinitiv.ema.access.OmmState.StatusCode;
 import com.refinitiv.ema.access.OmmState.StreamState;
 
-/** Tests queue reservation, eviction, and virtual-worker lifecycle behavior. */
+/** Tests bounded FIFO admission and virtual-worker lifecycle behavior. */
 class MessageProcessingPipelineTest {
 
     private static final Duration WAIT_TIMEOUT = Duration.ofSeconds(5);
@@ -40,21 +40,19 @@ class MessageProcessingPipelineTest {
     @SuppressWarnings("resource")
     void rejectsInvalidPipelineConfiguration() {
         assertThrows(IllegalArgumentException.class,
-                () -> new MessageProcessingPipeline(0, 10, 1, ignored -> { }));
+                () -> new MessageProcessingPipeline(0, 10, ignored -> { }));
         assertThrows(IllegalArgumentException.class,
-                () -> new MessageProcessingPipeline(1, 0, 0, ignored -> { }));
-        assertThrows(IllegalArgumentException.class,
-                () -> new MessageProcessingPipeline(1, 10, 11, ignored -> { }));
+                () -> new MessageProcessingPipeline(1, 0, ignored -> { }));
     }
 
-    /** Verifies reserved capacity and oldest-Update eviction for priority traffic. */
+    /** Verifies that a full queue drops new messages without considering their type. */
     @Test
-    void reservesCapacityAndEvictsOldestQueuedUpdateForPriorityMessage() throws InterruptedException {
+    void dropsNewestMessagesWithoutTypePriorityWhenQueueIsFull() throws InterruptedException {
         List<String> output = Collections.synchronizedList(new ArrayList<>());
         CountDownLatch firstWorkerOutput = new CountDownLatch(1);
         CountDownLatch releaseWorker = new CountDownLatch(1);
 
-        try (MessageProcessingPipeline pipeline = new MessageProcessingPipeline(1, 3, 1, json -> {
+        try (MessageProcessingPipeline pipeline = new MessageProcessingPipeline(1, 3, json -> {
             if (output.isEmpty()) {
                 firstWorkerOutput.countDown();
                 await(releaseWorker);
@@ -67,6 +65,7 @@ class MessageProcessingPipelineTest {
             pipeline.submitUpdate(EmaFactory.createUpdateMsg().name("U2"), EVENT);
             pipeline.submitUpdate(EmaFactory.createUpdateMsg().name("U3"), EVENT);
             pipeline.submitUpdate(EmaFactory.createUpdateMsg().name("U4"), EVENT);
+            pipeline.submitUpdate(EmaFactory.createUpdateMsg().name("U5"), EVENT);
             pipeline.submitRefresh(EmaFactory.createRefreshMsg()
                     .name("R1")
                     .state(StreamState.OPEN, DataState.OK, StatusCode.NONE, "open")
@@ -77,11 +76,12 @@ class MessageProcessingPipelineTest {
 
         assertEquals(4, output.size());
         assertTrue(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U1\"")));
-        assertFalse(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U2\"")));
+        assertTrue(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U2\"")));
         assertTrue(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U3\"")));
-        assertFalse(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U4\"")));
-        assertTrue(output.stream().anyMatch(json -> json.contains("\"type\":\"Refresh\"")));
-        assertTrue(output.stream().anyMatch(json -> json.contains("\"type\":\"Status\"")));
+        assertTrue(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U4\"")));
+        assertFalse(output.stream().anyMatch(json -> json.contains("\"itemName\":\"U5\"")));
+        assertFalse(output.stream().anyMatch(json -> json.contains("\"type\":\"Refresh\"")));
+        assertFalse(output.stream().anyMatch(json -> json.contains("\"type\":\"Status\"")));
         assertTrue(output.stream()
                 .map(JSONObject::new)
                 .allMatch(json -> "test\"closure\n".equals(json.getString("closure"))));

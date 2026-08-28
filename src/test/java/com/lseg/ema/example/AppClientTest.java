@@ -43,7 +43,7 @@ class AppClientTest {
                 .message(loginRefresh)
                 .toString();
 
-        try (AppClient client = new AppClient(1, 10, 1, output::add)) {
+        try (AppClient client = new AppClient(1, 10, output::add)) {
             client.onRefreshMsg(loginRefresh, EVENT);
         }
 
@@ -62,7 +62,7 @@ class AppClientTest {
                 .message(loginStatus)
                 .toString();
 
-        try (AppClient client = new AppClient(1, 10, 1, output::add)) {
+        try (AppClient client = new AppClient(1, 10, output::add)) {
             client.onStatusMsg(loginStatus, EVENT);
         }
 
