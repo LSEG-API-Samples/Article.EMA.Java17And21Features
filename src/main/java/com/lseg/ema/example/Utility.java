@@ -23,6 +23,8 @@ public class Utility {
     static String serviceName = "ELEKTRON_DD";
     static String[] itemNames = {"/THB="};
 
+    private static boolean hasJWK;
+
     static void printHelp() {
         System.out.println("""
                 
@@ -108,7 +110,9 @@ public class Utility {
             // Get the full contents of the JWK file.
             byte[] jwkBuffer = Files.readAllBytes(Paths.get(jwkFile));
             clientJwk = new String(jwkBuffer);
+            System.out.println("Loaded JWK file: " + jwkFile);
             config.clientJWK(clientJwk);
+            hasJWK = true;
         } catch (Exception e) {
             System.err.println("Error loading JWK file: " + e.getMessage());
             System.err.println();
@@ -130,5 +134,9 @@ public class Utility {
                         .map(String::strip)
                         .filter(Predicate.not(String::isBlank))
                         .toArray(String[]::new);
+    }
+
+    public static boolean hasJWK() {
+        return hasJWK;
     }
 }

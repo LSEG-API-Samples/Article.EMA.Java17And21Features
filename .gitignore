@@ -77,4 +77,6 @@ desktop.ini
 ### EMA / LSEG specific ###
 *.lck
 EmaConfig.xml.bak
+token.jwt
+jwk_private.json
 

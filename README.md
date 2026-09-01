@@ -58,6 +58,13 @@ Java_17_21_EMA/
 - `RTO_CLIENTID_V2_1`
 - `RTO_CLIENTSECRET_1`
 
+The application supports these OAuth authentication combinations:
+
+- Client ID with Client Secret
+- Client ID with a JWK file supplied through `-jwkFile`
+
+Startup ends before opening an RTO session when the Client ID is absent or blank, or when neither a Client Secret nor a JWK file is provided. When a JWK file is provided, the application does not apply the Client Secret.
+
 Set them for the current PowerShell session:
 
 ```powershell
@@ -67,7 +74,7 @@ $env:RTO_CLIENTSECRET_1 = "your-client-secret"
 
 ### Manual source-code configuration
 
-For local demonstration purposes, the client ID and client secret can instead be assigned directly in `ConsumerRTO.java`. In `applyEnvironmentCredentials()`, replace the environment-variable lookups (currently lines 49 and 50) with your values:
+For local demonstration purposes, the client ID and client secret can instead be assigned directly in `ConsumerRTO.java`. In `applyEnvironmentCredentials()`, replace the environment-variable lookups with your values:
 
 ```java
 String clientId = "your-client-id";

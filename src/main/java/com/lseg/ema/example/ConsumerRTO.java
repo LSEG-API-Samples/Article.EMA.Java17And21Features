@@ -117,14 +117,41 @@ public class ConsumerRTO {
     }
 
     /** Applies OAuth credentials when their environment variables are defined. */
-    private static void applyEnvironmentCredentials(OmmConsumerConfig config) {
-        String clientId = System.getenv(CLIENT_ID_ENVIRONMENT_VARIABLE);
-        String clientSecret = System.getenv(CLIENT_SECRET_ENVIRONMENT_VARIABLE);
+    private static boolean applyEnvironmentCredentials(OmmConsumerConfig config) {
+        // Treat unset and blank environment variables consistently during validation.
+        String clientId = Objects.requireNonNullElse(
+                System.getenv(CLIENT_ID_ENVIRONMENT_VARIABLE),
+                "");
+        String clientSecret = Objects.requireNonNullElse(
+                System.getenv(CLIENT_SECRET_ENVIRONMENT_VARIABLE),
+                "");
 
-        if (clientId != null && !clientId.isBlank())
-            config.clientId(clientId);
-        if (clientSecret != null && !clientSecret.isBlank())
+        boolean hasClientId = !clientId.isBlank();
+        boolean hasClientSecret = !clientSecret.isBlank();
+        boolean hasClientJwk = Utility.hasJWK();
+
+        // Both client-secret and JWK authentication require the application client ID.
+        if (!hasClientId) {
+            System.err.printf(
+                    "No client ID found; exiting. Set the %s environment variable to a valid value.%n",
+                    CLIENT_ID_ENVIRONMENT_VARIABLE);
+            return false;
+        }
+
+        // Either a client secret or the JWK loaded from -jwkFile can authenticate the session.
+        if (!hasClientSecret && !hasClientJwk) {
+            System.err.printf(
+                    "No client secret or JWK found; exiting. Set the %s environment variable or provide -jwkFile.%n",
+                    CLIENT_SECRET_ENVIRONMENT_VARIABLE);
+            return false;
+        }
+
+        config.clientId(clientId);
+        // Prefer JWK authentication when configured; command-line parsing already applied it to config.
+        if (!hasClientJwk)
             config.clientSecret(clientSecret);
+
+        return true;
     }
 
     /** Registers either a single-item request or a batch request, both with the same View. */
@@ -187,9 +214,12 @@ public class ConsumerRTO {
         AppClient appClient = null;
         try {
             OmmConsumerConfig config = EmaFactory.createOmmConsumerConfig();
-            applyEnvironmentCredentials(config);
+
 
             if (!Utility.readCommandlineArgs(args, config))
+                return;
+
+            if (!applyEnvironmentCredentials(config))
                 return;
 
             appClient = new AppClient();
