@@ -123,6 +123,59 @@ Request a batch of items:
 java -jar target/ema-consumer-java21-1.0.jar -serviceName ELEKTRON_DD -itemNames "AUD=,HKD=,JPY="
 ```
 
+
+### Example Result 
+
+
+```bash
+
+$>java -jar target/ema-consumer-java21-1.0.jar -itemNames "/EUR=,/THB=" -serviceName "ELEKTRON_DD"
+
+Sep 02, 2026 3:57:04 PM com.refinitiv.ema.access.ChannelCallbackClient reactorChannelEventCallback
+INFO: loggerMsg
+    ClientName: ChannelCallbackClient
+    Severity: Info
+    Text:    Received ChannelUp event on channel Channel_RTO
+        Instance Name Consumer_RTO_1
+        Component Version adsXXX 64-bit
+loggerMsgEnd
+
+
+
+AllowSuspectData : true
+ApplicationId : 256
+ApplicationName : RTO
+Position : 127.0.0.1/Developer_Relations
+ProvidePermissionExpressions : true
+ProvidePermissionProfile : false
+SingleOpen : true
+SupportBatchRequests : 7
+SupportOMMPost : true
+SupportOptimizedPauseResume : false
+SupportViewRequests : true
+SupportStandby : true
+SupportEnhancedSymbolList : 1
+AuthenticationErrorCode : 0
+Solicited : true
+UserName : xxxxx
+UserNameType : 1
+State : StreamState: 1 DataState: 1 StatusCode: 0StatusText: Login accepted by host yyyy.
+
+StatusMsg
+    streamId="5"
+    domain="MarketPrice Domain"
+    state="Closed / Ok / None / 'Stream closed for batch'"
+    serviceName="ELEKTRON_DD"
+StatusMsgEnd
+
+
+{"sequence":1,"itemName":"/EUR=","streamId":6,"domainType":6,"payload":{"dataType":"FieldList","fields":[{"FID":3,"dataType":"Rmtes","FieldName":"DSPLY_NAME","value":"DANSKE BANK  C/d"},{"FID":11,"dataType":"Real","FieldName":"NETCHNG_1","value":"-0.0012"},{"FID":22,"dataType":"Real","FieldName":"BID","value":"1.158"},{"FID":25,"dataType":"Real","FieldName":"ASK","value":"1.1584"},{"FID":1025,"dataType":"Time","FieldName":"QUOTIM","value":"8:42:1:0"},{"FID":3386,"dataType":"Date","FieldName":"QUOTE_DATE","value":"2 / 9 / 2026"}]},"handle":3,"attributes":{"dataType":"NoData"},"state":{"code":"None","data":"Ok","stream":"Open","text":""},"type":"Refresh","serviceName":"ELEKTRON_DD","parentHandle":2,"closure":"null"}
+{"sequence":2,"itemName":"/THB=","streamId":7,"domainType":6,"payload":{"dataType":"FieldList","fields":[{"FID":3,"dataType":"Rmtes","FieldName":"DSPLY_NAME","value":"BK OF CHINA/d"},{"FID":11,"dataType":"Real","FieldName":"NETCHNG_1","value":"0.01"},{"FID":22,"dataType":"Real","FieldName":"BID","value":"33.3"},{"FID":25,"dataType":"Real","FieldName":"ASK","value":"33.32"},{"FID":1025,"dataType":"Time","FieldName":"QUOTIM","value":"8:27:2:0"},{"FID":3386,"dataType":"Date","FieldName":"QUOTE_DATE","value":"2 / 9 / 2026"}]},"handle":4,"attributes":{"dataType":"NoData"},"state":{"code":"None","data":"Ok","stream":"Open","text":""},"type":"Refresh","serviceName":"ELEKTRON_DD","parentHandle":2,"closure":"null"}
+{"sequence":3,"itemName":"/THB=","streamId":7,"domainType":6,"payload":{"dataType":"FieldList","fields":[{"FID":22,"dataType":"Real","FieldName":"BID","value":"33.3"},{"FID":25,"dataType":"Real","FieldName":"ASK","value":"33.32"},{"FID":11,"dataType":"Real","FieldName":"NETCHNG_1","value":"0.01"},{"FID":1025,"dataType":"Time","FieldName":"QUOTIM","value":"8:27:5:0"},{"FID":3386,"dataType":"Date","FieldName":"QUOTE_DATE","value":"2 / 9 / 2026"},{"FID":3,"dataType":"Rmtes","FieldName":"DSPLY_NAME","value":"BK OF CHINA/d"}]},"handle":4,"attributes":{"dataType":"NoData"},"type":"Update","serviceName":"ELEKTRON_DD","parentHandle":2,"closure":"null"}
+{"sequence":4,"itemName":"/EUR=","streamId":6,"domainType":6,"payload":{"dataType":"FieldList","fields":[{"FID":22,"dataType":"Real","FieldName":"BID","value":"1.1581"},{"FID":25,"dataType":"Real","FieldName":"ASK","value":"1.1582"},{"FID":11,"dataType":"Real","FieldName":"NETCHNG_1","value":"-0.0011"},{"FID":1025,"dataType":"Time","FieldName":"QUOTIM","value":"8:42:5:0"},{"FID":3386,"dataType":"Date","FieldName":"QUOTE_DATE","value":"2 / 9 / 2026"},{"FID":3,"dataType":"Rmtes","FieldName":"DSPLY_NAME","value":"BARCLAYS     L/d"}]},"handle":3,"attributes":{"dataType":"NoData"},"type":"Update","serviceName":"ELEKTRON_DD","parentHandle":2,"closure":"null"}
+
+```
+
 ### Command-Line Options
 
 | Option | Description |
