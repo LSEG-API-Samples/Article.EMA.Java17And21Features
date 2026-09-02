@@ -1,38 +1,69 @@
 # Demonstrating Java 17 and Java 21 using the EMA Consumer Application 
 
-This project demonstrate the Java 17 and Java 21 new features via the Enterprise Message API (EMA) Consumer Application. 
+- Version: 1.0
+- Last updated: Sep 2026
+- Prerequisite: Java SDK version 21 and RTO access
 
-The project goal is to show a simple demonstration of the new features in Java 17 and Java 21 that help developers to adopt new version of Java for the code readability and maintainability.
+## Overview
 
-The consumer application performs the following features:
-- OAuth client authentication
-- An encrypted RTO connection with session management
-- Single-item and batch requests
-- Field ID views
-- Java 17 records and a sealed message hierarchy for queued Refresh and Update messages
-- Java 21 exhaustive pattern matching and virtual-thread processing
-- Login, refresh, update, status, generic, and acknowledgment callbacks
-  - Asynchronous Refresh and Update conversion to JSON with Java 21 virtual threads
-  - Direct login and state-bearing non-login Status output
-- Packaging the application and its runtime dependencies as one executable JAR
+Java has evolved significantly from Java 11 LTS to Java 17 LTS and Java 21 LTS. Each release introduces bug fixes, performance improvements, and new language features that enhance developer productivity, code readability, and application maintainability. 
+
+This Proof of Concept (POC) project demonstrates selected features introduced in Java 17 and Java 21 using an Enterprise Message API (EMA) Consumer application. Its objective is to help developers understand the benefits of newer Java versions and support their adoption through practical examples that improve code readability and maintainability.
+
+### Note
+
+This POC is intended for demonstration and educational purposes only and is **not designed for production use**. The source code prioritizes clarity and ease of understanding over performance, scalability, and production-grade practices. Do not use this project as-is in a production environment. The author assumes no responsibility for any issues arising from its use.
+
+## What Does the Consumer Application Demonstrate?
+
+The consumer application is based on the [EMA Java ex113_MP_SessionMgmt](https://github.com/Refinitiv/Real-Time-SDK/tree/master/Java/Ema/Examples/src/main/java/com/refinitiv/ema/examples/training/consumer/series100/ex113_MP_SessionMgmt) example. It demonstrates the following workflow:
+
+- Authenticates and connects to Real-Time Optimized (RTO) through an encrypted EMA session.
+- Models single-item and batch field-View requests using Java 17 sealed interfaces and records, then dispatches them using a Java 21 record-pattern switch.
+- Clones Refresh and Update messages, processes them in bounded batches on virtual-thread workers, and converts them asynchronously to JSON.
+- Prints domain-decoded Login Refresh and Login Status messages directly, prints state-bearing non-login Status messages as EMA text, and ignores non-login Status messages without state.
+- Packages the application and its runtime dependencies as one executable shaded JAR.
 
 ## Prerequisites
 
 - JDK 21 (Check the [API Compatibility Matrix](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/documentation#api-compatibility-matrix) document for supported vendors and versions)
 - Apache Maven
-- LSEG Real-Time Optimized credentials and the required service entitlements
+- LSEG Real-Time Optimized Service-ID/JWK credentials and the required service entitlements
 - Network access to the RTO endpoints
+- Support OS Platforms (Check the [API Compatibility Matrix](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/documentation#api-compatibility-matrix) document)
+
+Please contact your LSEG Representative or Account Manager to help you with RTO access.
 
 Confirm the installed tools:
 
-```powershell
+```bash
 java -version
 mvn -version
 ```
 
+### Prerequisites Note 
+
+This project code does not cover the Machine-ID type account (see [Account authorization V1 to V2 migration cheat sheet](https://developers.lseg.com/en/article-catalog/article/account-authorization-v1-to-v2-migration-cheat-sheet) article). 
+
 ## Configuration
 
-`EmaConfig.xml` defines the EMA consumers, channels, and dictionaries. The application selects the `Consumer_RTO` consumer.
+`EmaConfig.xml` defines the EMA consumers, channels, and dictionaries. The application selects the `Consumer_RTO` consumer. You can set the RTO endpoint region via the `Location` property. 
+
+```xml
+<Channel>
+	<Name value="Channel_RTO"/>
+	<ChannelType value="ChannelType::RSSL_ENCRYPTED"/>
+	<CompressionType value="CompressionType::None"/>
+	<GuaranteedOutputBuffers value="5000"/>
+	<!-- EMA discovers a host and a port from LDP service discovery for the specified
+                   location when both of them are not set and the session management is enable. -->
+	<Location value="ap-southeast-1"/>
+	<EnableSessionManagement value="1"/>
+	<ObjectName value=""/>
+</Channel>
+```
+
+Please check the [Real-Time - Optimized Install and Config Guide](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/documentation#refinitiv-real-time-optimized-install-and-config-guide) for the list of supported regions.
 
 Keep `EmaConfig.xml` in the process working directory. When using the commands in this README, run them from the project root:
 
@@ -47,34 +78,48 @@ Java_17_21_EMA/
 └── target/
 ```
 
-`EmaConfig.xml` is intentionally external and is not embedded in the executable JAR.
-
 ## Credentials
 
 ### Recommended: environment variables
 
-`ConsumerRTO` reads the client ID and client secret from these environment variables:
+The POC application supports the following combination of RTO Version 2 Authentication:
+
+- `Client ID` (aka Service-ID) + `Client Secret`
+- `Client ID` + `JWK encoded public key`
+
+
+The example code reads the client ID from these environment variables:
 
 - `RTO_CLIENTID_V2_1`
 - `RTO_CLIENTSECRET_1`
 
-The application supports these OAuth authentication combinations:
+The JWK file is supported through the following application argument
 
-- Client ID with Client Secret
-- Client ID with a JWK file supplied through `-jwkFile`
+- `-jwkFile file containing the private JWK encoded in JSON format`
+
+> **Security warning:** A private JWK JSON file contains sensitive private-key material. Never commit it to source control. Store it securely outside the repository or use an external secret manager.
 
 Startup ends before opening an RTO session when the Client ID is absent or blank, or when neither a Client Secret nor a JWK file is provided. When a JWK file is provided, the application does not apply the Client Secret.
 
-Set them for the current PowerShell session:
+Set them for the current terminal session:
+
+**Powershell**
 
 ```powershell
 $env:RTO_CLIENTID_V2_1 = "your-client-id"
 $env:RTO_CLIENTSECRET_1 = "your-client-secret"
 ```
 
+**Linux**
+
+```bash
+export RTO_CLIENTID_V2_1="your-client-id"
+export RTO_CLIENTSECRET_1="your-client-secret"
+```
+
 ### Manual source-code configuration
 
-For local demonstration purposes, the client ID and client secret can instead be assigned directly in `ConsumerRTO.java`. In `applyEnvironmentCredentials()`, replace the environment-variable lookups with your values:
+For local demonstration purposes, the client ID and client secret can instead be assigned directly in `ConsumerRTO.java`. In `applyEnvironmentCredentials()` method, replace the environment-variable lookups with your values:
 
 ```java
 String clientId = "your-client-id";
@@ -85,8 +130,6 @@ Line numbers can change as the source evolves; locate the `applyEnvironmentCrede
 
 > **Security warning:** Hard-coded credentials can be exposed through source control, build logs, or decompiled JAR files. Use this approach only for temporary local testing. Never commit real credentials. Environment variables or an external secret manager are recommended.
 
-The application also supports OAuth client authentication with a JWK file through the `-jwkFile` and `-audience` options.
-
 ## Build
 
 The Maven Shade Plugin packages the application, EMA, and required runtime libraries into the primary executable JAR:
@@ -95,27 +138,11 @@ The Maven Shade Plugin packages the application, EMA, and required runtime libra
 mvn clean package
 ```
 
-The executable artifact is:
-
-```text
-target/ema-consumer-java21-1.0.jar
-```
-
-Maven Shade also retains the original thin application JAR as a build byproduct:
-
-```text
-target/original-ema-consumer-java21-1.0.jar
-```
-
-The `original-` JAR is not required to run or distribute the application.
+The executable artifact is **target/ema-consumer-java21-1.0.jar** file.
 
 ## Run
 
 Run the executable JAR from the project root so EMA can find `EmaConfig.xml`:
-
-```powershell
-java -jar .\target\ema-consumer-java21-1.0.jar
-```
 
 Show command-line help without opening an RTO session:
 
@@ -135,7 +162,47 @@ Request a batch of items:
 java -jar .\target\ema-consumer-java21-1.0.jar -serviceName ELEKTRON_DD -itemNames "AUD=,HKD=,JPY="
 ```
 
-## Virtual-thread JSON processing
+### Command-line options
+
+| Option | Description |
+|---|---|
+| `-?` | Display usage information. |
+| `-serviceName <name>` | Service to request; defaults to `ELEKTRON_DD`. |
+| `-itemNames <items>` | Comma-separated item names; defaults to `/THB=`. |
+| `-jwkFile <file>` | Private JWK file for OAuth client authentication with JWT. |
+| `-audience <value>` | JWT audience. |
+| `-keyfile <file>` | Keystore used by the encrypted connection. |
+| `-keypasswd <password>` | Keystore password. |
+| `-securityProvider <name>` | TLS provider, such as SunJSSE or Conscrypt. |
+| `-spTLSv1.2` | Enable only TLS 1.2 unless TLS 1.3 is also supplied. |
+| `-spTLSv1.3` | Enable only TLS 1.3 unless TLS 1.2 is also supplied. |
+| `-ph <host>` | Proxy host. |
+| `-pp <port>` | Proxy port. |
+| `-plogin <user>` | Proxy username. |
+| `-ppasswd <password>` | Proxy password. |
+| `-pdomain <domain>` | Proxy domain. |
+| `-krbfile <file>` | Kerberos configuration file. |
+
+When neither TLS version option is supplied, both TLS 1.2 and TLS 1.3 are enabled.
+
+## Project structure
+
+- `.github/copilot-instructions.md` — repository-wide Copilot guidance for this project
+- `ConsumerRTO.java` — application entry point, credentials, requests, and lifecycle
+- `AppClient.java` — EMA callbacks, direct Status output, login Refresh decoding, and data-message cloning
+- `MessageProcessingPipeline.java` — bounded queue and virtual-thread processing
+- `EmaJsonConverter.java` — stateless EMA item-message JSON conversion
+- `Utility.java` — command-line parsing and optional JWK loading
+- `EmaConfig.xml` — external EMA consumer, channel, and dictionary configuration
+- `pom.xml` — Java 21 compilation, EMA dependency, and executable JAR packaging
+
+## Java feature demonstration
+
+`MessageProcessingPipeline` demonstrates Java 17 records and sealed interfaces through its closed
+Refresh/Update queue model. It also uses a Java 21 exhaustive pattern-matching `switch` and Java 21
+virtual threads for asynchronous batch processing.
+
+### Virtual-thread JSON processing
 
 EMA invokes the Refresh, Update, and Status callbacks on its dispatch thread. Refresh and Update
 callbacks clone the message immediately and submit it to a bounded in-memory queue; five
@@ -182,46 +249,6 @@ The implementation separates callback, concurrency, and conversion responsibilit
 - `MessageProcessingPipeline.java` owns bounded FIFO queue admission, batch processing, virtual
   workers, overload counting, shutdown draining, and the sealed queued-message hierarchy.
 - `EmaJsonConverter.java` performs stateless, worker-safe EMA item-message conversion.
-
-## Command-line options
-
-| Option | Description |
-|---|---|
-| `-?` | Display usage information. |
-| `-serviceName <name>` | Service to request; defaults to `ELEKTRON_DD`. |
-| `-itemNames <items>` | Comma-separated item names; defaults to `/THB=`. |
-| `-jwkFile <file>` | Private JWK file for OAuth client authentication with JWT. |
-| `-audience <value>` | JWT audience. |
-| `-keyfile <file>` | Keystore used by the encrypted connection. |
-| `-keypasswd <password>` | Keystore password. |
-| `-securityProvider <name>` | TLS provider, such as SunJSSE or Conscrypt. |
-| `-spTLSv1.2` | Enable only TLS 1.2 unless TLS 1.3 is also supplied. |
-| `-spTLSv1.3` | Enable only TLS 1.3 unless TLS 1.2 is also supplied. |
-| `-ph <host>` | Proxy host. |
-| `-pp <port>` | Proxy port. |
-| `-plogin <user>` | Proxy username. |
-| `-ppasswd <password>` | Proxy password. |
-| `-pdomain <domain>` | Proxy domain. |
-| `-krbfile <file>` | Kerberos configuration file. |
-
-When neither TLS version option is supplied, both TLS 1.2 and TLS 1.3 are enabled.
-
-## Project structure
-
-- `.github/copilot-instructions.md` — repository-wide Copilot guidance for this project
-- `ConsumerRTO.java` — application entry point, credentials, requests, and lifecycle
-- `AppClient.java` — EMA callbacks, direct Status output, login Refresh decoding, and data-message cloning
-- `MessageProcessingPipeline.java` — bounded queue and virtual-thread processing
-- `EmaJsonConverter.java` — stateless EMA item-message JSON conversion
-- `Utility.java` — command-line parsing and optional JWK loading
-- `EmaConfig.xml` — external EMA consumer, channel, and dictionary configuration
-- `pom.xml` — Java 21 compilation, EMA dependency, and executable JAR packaging
-
-## Java feature demonstration
-
-`MessageProcessingPipeline` demonstrates Java 17 records and sealed interfaces through its closed
-Refresh/Update queue model. It also uses a Java 21 exhaustive pattern-matching `switch` and Java 21
-virtual threads for asynchronous batch processing.
 
 ## License
 
