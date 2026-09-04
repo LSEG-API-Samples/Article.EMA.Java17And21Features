@@ -8,7 +8,7 @@
 
 Java has evolved significantly from Java 11 LTS to Java 17 LTS and Java 21 LTS. Each release introduces bug fixes, performance improvements, and new language features that enhance developer productivity, code readability, and application maintainability. 
 
-This proof-of-concept Maven project uses the LSEG Enterprise Message API (EMA) to connect to Real-Time Optimized (RTO). It demonstrates practical Java 17 and Java 21 features in a small consumer application based on the [EMA Java ex113_MP_SessionMgmt](https://github.com/Refinitiv/Real-Time-SDK/tree/master/Java/Ema/Examples/src/main/java/com/refinitiv/ema/examples/training/consumer/series100/ex113_MP_SessionMgmt) example.
+This proof-of-concept Maven project uses the LSEG [Enterprise Message API (EMA) Java edition](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/) to connect to Real-Time Optimized (RTO). It demonstrates practical Java 17 and Java 21 features in a small consumer application based on the [EMA Java ex113_MP_SessionMgmt](https://github.com/Refinitiv/Real-Time-SDK/tree/master/Java/Ema/Examples/src/main/java/com/refinitiv/ema/examples/training/consumer/series100/ex113_MP_SessionMgmt) example.
 
 ### Note
 
@@ -227,3 +227,12 @@ Copyright 2020–2026 LSEG.
 
 Licensed under the [Apache License 2.0](LICENSE.md).
 
+## Reference 
+
+For further details, please check out the following resources:
+
+- [Real-Time SDK - Java](https://developers.lseg.com/en/api-catalog/refinitiv-data-platform/refinitiv-data-platform-apis) page on the [LSEG Developers Portal](https://developers.lseg.com/en/) website.
+- [EMA and ETA Java APIs RTO with Version 2 Authentication Quickstart](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/quick-start#rtsdk-ema-eta-quick-start-connecting-to-the-real-time-optimized-with-authentication-version-2).
+- [RTSDK Java documentation](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/documentation) page.
+- [EMA Java API: Real-Time Optimized Version 2 Authentication Migration Guide](https://developers.lseg.com/en/article-catalog/article/ema-java-api-real-time-optimized-version-2-authentication-migration-guide) article.
+- [Real-Time SDK on GitHub](https://github.com/Refinitiv/Real-Time-SDK).
