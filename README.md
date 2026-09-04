@@ -6,7 +6,7 @@
 
 ## Overview
 
-Java has evolved significantly from Java 11 LTS to Java 17 LTS and Java 21 LTS. Each release introduces bug fixes, performance improvements, and new language features that enhance developer productivity, code readability, and application maintainability. 
+Java has evolved significantly from Java 11 LTS to [Java 17 LTS](https://openjdk.org/projects/jdk/17/) and [Java 21 LTS](https://openjdk.org/projects/jdk/21/). Each release introduces bug fixes, performance improvements, and new language features that enhance developer productivity, code readability, and application maintainability. 
 
 This proof-of-concept Maven project uses the LSEG [Enterprise Message API (EMA) Java edition](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/) to connect to Real-Time Optimized (RTO). It demonstrates practical Java 17 and Java 21 features in a small consumer application based on the [EMA Java ex113_MP_SessionMgmt](https://github.com/Refinitiv/Real-Time-SDK/tree/master/Java/Ema/Examples/src/main/java/com/refinitiv/ema/examples/training/consumer/series100/ex113_MP_SessionMgmt) example.
 
@@ -18,8 +18,10 @@ This POC is intended for demonstration and educational purposes only and is **no
 
 - Encrypted RTO connections with EMA session management
 - Single-item and batch field-view requests
-- Java 17 records and sealed interfaces for closed request and message models
-- Java 21 pattern-matching `switch` expressions and virtual threads
+- Java 17 [records](https://openjdk.org/jeps/395) and [sealed interfaces](https://openjdk.org/jeps/409) for closed request and message models
+- Java 21 [pattern-matching `switch`](https://openjdk.org/jeps/441)
+  expressions, [record patterns](https://openjdk.org/jeps/440),
+  and [virtual threads](https://openjdk.org/jeps/444)
 - Bounded, asynchronous conversion of Refresh and Update messages to JSON
 - Direct handling of Login and Status messages
 - One executable shaded JAR containing the application and runtime dependencies
@@ -234,5 +236,9 @@ For further details, please check out the following resources:
 - [Real-Time SDK - Java](https://developers.lseg.com/en/api-catalog/refinitiv-data-platform/refinitiv-data-platform-apis) page on the [LSEG Developers Portal](https://developers.lseg.com/en/) website.
 - [EMA and ETA Java APIs RTO with Version 2 Authentication Quickstart](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/quick-start#rtsdk-ema-eta-quick-start-connecting-to-the-real-time-optimized-with-authentication-version-2).
 - [RTSDK Java documentation](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/documentation) page.
-- [EMA Java API: Real-Time Optimized Version 2 Authentication Migration Guide](https://developers.lseg.com/en/article-catalog/article/ema-java-api-real-time-optimized-version-2-authentication-migration-guide) article.
+- [EMA Java API: Real-Time Optimized Version 2 Authentication Migration Guide article](https://developers.lseg.com/en/article-catalog/article/ema-java-api-real-time-optimized-version-2-authentication-migration-guide).
 - [Real-Time SDK on GitHub](https://github.com/Refinitiv/Real-Time-SDK).
+- [Java 17 features reference page](https://openjdk.org/projects/jdk/17/).
+- [Java 21 features reference page](https://openjdk.org/projects/jdk/21/)
+
+For any questions related to EMA API or Real-Time SDK, please use the [Developers Community Q&A page](https://community.developers.lseg.com/).
