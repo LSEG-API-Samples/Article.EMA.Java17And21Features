@@ -2,19 +2,26 @@
 
 ## Overview
 
-**Last Updated**: September 2026
+**Last Updated**: October 2026
 
 Java 17 and Java 21 are Long-Term Support (LTS) releases that add useful language and concurrency features to Java applications. However, a feature is easier to understand when we see it solving a real application problem instead of looking at an isolated example.
 
-This article walks through an [Enterprise Message API - Java Edition (EMA Java)](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java) consumer that connects to the LSEG Real-Time Optimized (RTO) service. The application requests one or more instruments, receives streaming market data, and converts item Refresh and Update messages to JSON.
+This article demonstrates Java 17 and 21 features through an [Enterprise Message API - Java Edition (EMA Java)](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java) consumer application that connects to the LSEG Real-Time Optimized (RTO) service. The application requests one or more instruments, receives streaming market data, and converts item Refresh and Update messages to JSON.
 
-The example uses the following modern Java features:
+The example uses the following modern Java features. Java 17 includes everything finalized in Java 12 to 17, so the list shows the release where each feature became final:
 
-- [Records](https://openjdk.org/jeps/395) and [sealed interfaces](https://openjdk.org/jeps/409) available in Java 17
-- [Pattern matching](https://openjdk.org/jeps/441) and [record patterns](https://openjdk.org/jeps/440) in `switch` with Java 21
-- The Java 21 [`List.getFirst()` method](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/List.html#getFirst())
-- Java 21 [virtual threads](https://openjdk.org/jeps/444)
-- Text blocks, Stream API operations, and immutable lists
+| Feature | Final in | Where it appears |
+| --- | --- | --- |
+| [`switch` expressions](https://openjdk.org/jeps/361) with arrow labels | Java 14 | Request selection and command-line parsing |
+| [Text blocks](https://openjdk.org/jeps/378) | Java 15 | Command-line help text |
+| [Pattern matching for `instanceof`](https://openjdk.org/jeps/394) | Java 16 | Reading the Refresh state in the JSON converter |
+| [Records](https://openjdk.org/jeps/395) | Java 16 | Requests, queued messages, and callback details |
+| `Stream.toList()` | Java 16 | Immutable lists of validated item names |
+| [Sealed interfaces](https://openjdk.org/jeps/409) | Java 17 | Request and queued-message hierarchies |
+| [Pattern matching for `switch`](https://openjdk.org/jeps/441) | Java 21 | Message type and field value conversion |
+| [Record patterns](https://openjdk.org/jeps/440) | Java 21 | Single and batch request registration |
+| [`List.getFirst()`](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/List.html#getFirst()) | Java 21 | Single-item request selection |
+| [Virtual threads](https://openjdk.org/jeps/444) | Java 21 | JSON worker tasks |
 
 The main focus is how these features help the application model requests, route messages, run asynchronous work, and shut down cleanly.
 
@@ -39,7 +46,7 @@ The application reads the client ID from the `RTO_CLIENTID_V2_1` environment var
 
 > **Security:** Never put a real client ID, client secret, private JWK, proxy password, or keystore password in source code or source control. Use environment variables or an external secret manager.
 
-That covers the prerequisite of this example.
+That covers the prerequisites of this example.
 
 ## Application Flow
 
@@ -82,7 +89,7 @@ Now we can look at each part step-by-step.
 
 ## ConsumerRTO: Starting the EMA Consumer
 
-The `ConsumerRTO` class is the application entry point. It owns the startup flow, validates request data, opens the EMA consumer, and guarantees cleanup.
+That brings us to an entry point of the application, the `ConsumerRTO` class. It owns the startup flow, validates request data, opens the EMA consumer, and guarantees cleanup.
 
 ### Default Service, Item, and Field View
 
@@ -135,7 +142,7 @@ The factory method also demonstrates a few other modern Java APIs:
 - A Stream validates every item name.
 - `Stream.toList()` returns an unmodifiable list.
 - `List.getFirst()` expresses the intention more clearly than `get(0)` for the single-item case.
-- A `switch` expression selects and returns the correct request type.
+- A `switch` expression (Java 14) selects and returns the correct request type. The arrow labels (`->`) never fall through to the next case, so no `break` is needed.
 
 `List.getFirst()` is new in Java 21 through the sequenced collections APIs.
 
@@ -219,16 +226,19 @@ For the single request, EMA receives the item name in the request message. For t
 
 ### Opening the RTO Session and Registering Requests
 
-The main method brings those pieces together:
+The `run()` method, called from `main()`, brings those pieces together:
 
 ```java
 OmmConsumerConfig config = EmaFactory.createOmmConsumerConfig();
 
-if (!Utility.readCommandlineArgs(args, config))
-    return;
+switch (Utility.readCommandlineArgs(args, config)) {
+    case CONTINUE -> { }
+    case HELP_SHOWN -> { return EXIT_SUCCESS; }
+    case INVALID -> { return EXIT_FAILURE; }
+}
 
 if (!applyEnvironmentCredentials(config))
-    return;
+    return EXIT_FAILURE;
 
 appClient = new AppClient();
 ItemRequest itemRequest = ItemRequest.create(
@@ -242,6 +252,7 @@ consumer.registerClient(loginReq.message(), appClient);
 
 registerItemRequest(consumer, appClient, itemRequest);
 Thread.sleep(RUN_DURATION);
+return EXIT_SUCCESS;
 ```
 
 The sequence is important:
@@ -256,6 +267,18 @@ The sequence is important:
 
 EMA session management handles the RTO token and connection workflow based on the supplied authentication and consumer configuration.
 
+`run()` returns an exit code instead of just stopping. Asking for help with `-?` is a success (`0`). An invalid option, missing credentials, or an EMA error is a failure (`1`). `main()` passes a failure code to `System.exit()` so scripts and CI pipelines can detect it:
+
+```java
+public static void main(String[] args) {
+    int exitCode = run(args);
+    if (exitCode != EXIT_SUCCESS)
+        System.exit(exitCode);
+}
+```
+
+`System.exit()` is called only after `run()` returns, so the cleanup in its `finally` block always runs first.
+
 ### Cleanup and Interruption
 
 The application restores the thread interruption flag and always cleans up successfully created resources:
@@ -264,8 +287,13 @@ The application restores the thread interruption flag and always cleans up succe
 } catch (InterruptedException exception) {
     Thread.currentThread().interrupt();
     System.err.println("Consumer interrupted: " + exception.getMessage());
+    return EXIT_FAILURE;
+} catch (IllegalArgumentException exception) {
+    System.err.println("Invalid item request: " + exception.getMessage());
+    return EXIT_FAILURE;
 } catch (OmmException exception) {
     System.err.println(exception.getMessage());
+    return EXIT_FAILURE;
 } finally {
     if (consumer != null)
         consumer.uninitialize();
@@ -276,11 +304,13 @@ The application restores the thread interruption flag and always cleans up succe
 
 `consumer.uninitialize()` closes the EMA session first. Closing `AppClient` then lets its processing pipeline finish accepted work. Restoring the interrupted status is important because it preserves the cancellation signal for higher-level code and runtime tools.
 
+If a service or item name is blank, the request records throw `IllegalArgumentException`. The application prints a short message instead of a stack trace.
+
 That covers the consumer startup and request model.
 
 ## AppClient: Routing EMA Callbacks
 
-Moving on to the callback flow, `AppClient` implements `OmmConsumerClient`. EMA calls its methods when Login and item messages arrive.
+Moving on to the callback flow, `AppClient` class implements `OmmConsumerClient` interface. EMA calls its methods when Login and item messages arrive.
 
 The class deliberately separates control messages from data messages:
 
@@ -350,7 +380,7 @@ This keeps Login and stream-state information easy to see while reserving JSON c
 
 ## MessageProcessingPipeline: Bounded Work with Virtual Threads
 
-Now we come to the main concurrency part of the application. `MessageProcessingPipeline` moves JSON conversion away from EMA callback threads.
+Now, what about the pipeline that I have mentioned above. The pipeline is the main concurrency part of the application. `MessageProcessingPipeline` moves JSON conversion away from EMA callback threads.
 
 The example uses these tuning values:
 
@@ -488,6 +518,8 @@ private static String messageType(QueuedMessage queuedMessage) {
 
 No cast or `instanceof` chain is required. There is also no `default` because the sealed interface makes the two cases exhaustive.
 
+The pattern variables are named `ignored` because only the type matters here. Java 22 lets you write `_` for an unused variable, but this project targets Java 21, so it uses a normal name.
+
 Each conversion has its own `try` block. A malformed message or output failure is reported, but it does not terminate the worker and prevent later messages from being processed.
 
 ### Graceful Shutdown
@@ -520,7 +552,7 @@ That covers the virtual-thread processing pipeline.
 
 ## EmaJsonConverter: Converting Item Data to JSON
 
-`EmaJsonConverter` is a stateless utility class. It receives only cloned messages and copied callback details, then returns one complete JSON string.
+That brings us to the class that convert incoming price data to JSON. The `EmaJsonConverter` is a stateless utility class. It receives only cloned messages and copied callback details, then returns one complete JSON string.
 
 ### Building the JSON Message
 
@@ -544,6 +576,8 @@ if (msg instanceof RefreshMsg refreshMsg)
 ```
 
 A Refresh includes stream state, while an Update does not. The state object contains the stream state, data state, status code, and status text.
+
+The `msg instanceof RefreshMsg refreshMsg` check uses pattern matching for `instanceof` (Java 16). If the check succeeds, `refreshMsg` is already typed as `RefreshMsg`, so no separate cast is needed.
 
 The converter adds both message attributes and payload. A `FieldList` is expanded into JSON fields. Other EMA container types are identified by their data type but are not fully expanded by this example.
 
@@ -591,7 +625,7 @@ return switch (fieldEntry.load()) {
 };
 ```
 
-Before this `switch`, an EMA blank is returned as `null`. The pattern variables such as `real`, `date`, and `ascii` already have the correct type inside their branch. This replaces a longer sequence of type checks and casts with one readable expression.
+Before this `switch`, an EMA blank data is returned as the text `" blank"`, so the JSON output always has a string value. The pattern variables such as `real`, `date`, and `ascii` already have the correct type inside their branch. This replaces a longer sequence of type checks and casts with one readable expression.
 
 A converted item message has a shape similar to the following shortened example:
 
@@ -627,16 +661,18 @@ A converted item message has a shape similar to the following shortened example:
 
 Only item Refresh and Update messages take this JSON path. Login and all Status messages bypass `EmaJsonConverter`.
 
-## Utility and Command-line Options
+Let’s leave the `EmaJsonConverter` class there.
 
-The `Utility` class supports command-line parsing, help output, TLS selections, proxy settings, and private JWK loading. It also stores the default request values:
+## Utility and Command-line Options in Brief
+
+The `Utility` class handles command-line parsing, help output, TLS and proxy settings, and private JWK loading. It also stores the default request values:
 
 ```java
 static String serviceName = "ELEKTRON_DD";
 static String[] itemNames = {"/THB="};
 ```
 
-The most relevant options for this walkthrough are:
+The examples of other options for this walkthrough are as follows:
 
 | Option | Purpose |
 | --- | --- |
@@ -644,11 +680,14 @@ The most relevant options for this walkthrough are:
 | `-serviceName <name>` | Select the service |
 | `-itemNames <items>` | Supply one item or a comma-separated batch |
 | `-jwkFile <file>` | Load a private JWK for Version 2 authentication |
-| `-audience <value>` | Set the JWT audience |
-| `-spTLSv1.2` | Select TLS 1.2 |
-| `-spTLSv1.3` | Select TLS 1.3 |
 
-If neither TLS-specific option is supplied, both TLS 1.2 and TLS 1.3 are enabled. `Utility` also uses a Java text block for its multi-line help text and Stream operations to trim and filter comma-separated item names.
+`Utility` also uses a few of the features shown earlier:
+
+- A text block (Java 15) holds the multi-line help text, so it reads like the real console output.
+- A `switch` on the option name uses arrow labels (Java 14), one line per option.
+- Stream operations trim and filter comma-separated item names.
+
+Every option value is checked before it is used. A missing value, an empty item list, an invalid proxy port, or an unknown option prints a short error and the help text, and the application exits with code `1` before opening an RTO session.
 
 The application can be run from the project root for one item:
 
@@ -668,33 +707,90 @@ java -jar target/ema-consumer-java21-1.0.jar \
 
 Running from the project root is important because EMA discovers the external `EmaConfig.xml` file from the process working directory.
 
+### Example Output
+
+```bash
+$>java -jar .\target\ema-consumer-java21-1.0.jar -itemNames /EUR=,/THB= -serviceName ELEKTRON_DD      
+
+Oct 28, 2026 4:21:03 PM com.refinitiv.ema.access.ChannelCallbackClient reactorChannelEventCallback
+INFO: loggerMsg
+    ClientName: ChannelCallbackClient
+    Severity: Info
+    Text:    Received ChannelUp event on channel Channel_RTO
+        Instance Name Consumer_RTO_1
+        Component Version ads-xxxx.linux 64-bit
+loggerMsgEnd
+
+
+
+AllowSuspectData : true
+ApplicationId : 256
+ApplicationName : RTO
+Position : 127.0.0.1/LOCAL
+ProvidePermissionExpressions : true
+ProvidePermissionProfile : false
+SingleOpen : true
+SupportBatchRequests : 7
+SupportOMMPost : true
+SupportOptimizedPauseResume : false
+SupportViewRequests : true
+SupportStandby : true
+SupportEnhancedSymbolList : 1
+AuthenticationErrorCode : 0
+Solicited : true
+UserName : USERname
+UserNameType : 1
+State : StreamState: 1 DataState: 1 StatusCode: 0StatusText: Login accepted by host xxxxx.
+
+StatusMsg
+    streamId="5"
+    domain="MarketPrice Domain"
+    state="Closed / Ok / None / 'Stream closed for batch'"
+    serviceName="ELEKTRON_DD"
+StatusMsgEnd
+
+
+{"sequence":1,"itemName":"/EUR=","streamId":6,"domainType":6,"payload":{"dataType":"FieldList","fields":[{"FID":3,"dataType":"Rmtes","FieldName":"DSPLY_NAME","value":"DANSKE BANK  C/d"},{"FID":11,"dataType":"Real","FieldName":"NETCHNG_1","value":"2.0E-4"},{"FID":22,"dataType":"Real","FieldName":"BID","value":"1.1124"},{"FID":25,"dataType":"Real","FieldName":"ASK","value":"1.1126"},{"FID":1025,"dataType":"Time","FieldName":"QUOTIM","value":"9:6:1:0"},{"FID":3386,"dataType":"Date","FieldName":"QUOTE_DATE","value":"28 / 10/ 2026"}]},"handle":3,"attributes":{"dataType":"NoData"},"state":{"code":"None","data":"Ok","stream":"Open","text":""},"type":"Refresh","serviceName":"ELEKTRON_DD","parentHandle":2,"closure":"null"}
+{"sequence":2,"itemName":"/THB=","streamId":7,"domainType":6,"payload":{"dataType":"FieldList","fields":[{"FID":3,"dataType":"Rmtes","FieldName":"DSPLY_NAME","value":"BARCLAYS     L/d"},{"FID":11,"dataType":"Real","FieldName":"NETCHNG_1","value":"-0.01"},{"FID":22,"dataType":"Real","FieldName":"BID","value":"33.76"},{"FID":25,"dataType":"Real","FieldName":"ASK","value":"33.79"},{"FID":1025,"dataType":"Time","FieldName":"QUOTIM","value":"8:51:0:0"},{"FID":3386,"dataType":"Date","FieldName":"QUOTE_DATE","value":"28 / 10 /2026"}]},"handle":4,"attributes":{"dataType":"NoData"},"state":{"code":"None","data":"Ok","stream":"Open","text":""},"type":"Refresh","serviceName":"ELEKTRON_DD","parentHandle":2,"closure":"null"}
+{"sequence":3,"itemName":"/EUR=","streamId":6,"domainType":6,"payload":{"dataType":"FieldList","fields":[{"FID":22,"dataType":"Real","FieldName":"BID","value":"1.1124"},{"FID":25,"dataType":"Real","FieldName":"ASK","value":"1.1126"},{"FID":11,"dataType":"Real","FieldName":"NETCHNG_1","value":"2.0E-4"},{"FID":1025,"dataType":"Time","FieldName":"QUOTIM","value":"9:6:5:0"},{"FID":3386,"dataType":"Date","FieldName":"QUOTE_DATE","value":"28 / 10 / 2026"},{"FID":3,"dataType":"Rmtes","FieldName":"DSPLY_NAME","value":"DANSKE BANK  C/d"}]},"handle":3,"attributes":{"dataType":"NoData"},"type":"Update","serviceName":"ELEKTRON_DD","parentHandle":2,"closure":"null"}
+{"sequence":4,"itemName":"/THB=","streamId":7,"domainType":6,"payload":{"dataType":"FieldList","fields":[{"FID":22,"dataType":"Real","FieldName":"BID","value":"33.76"},{"FID":25,"dataType":"Real","FieldName":"ASK","value":"33.79"},{"FID":11,"dataType":"Real","FieldName":"NETCHNG_1","value":"-0.01"},{"FID":1025,"dataType":"Time","FieldName":"QUOTIM","value":"8:51:6:0"},{"FID":3386,"dataType":"Date","FieldName":"QUOTE_DATE","value":"28 / 10 / 2026"},{"FID":3,"dataType":"Rmtes","FieldName":"DSPLY_NAME","value":"SEB S/d"}]},"handle":4,"attributes":{"dataType":"NoData"},"type":"Update","serviceName":"ELEKTRON_DD","parentHandle":2,"closure":"null"}
+...
+```
+
+That is all I have to say about the application source code with Java 17 and 21 features.
+
 ## Tests in Brief
 
 The project contains focused tests for the behavior described in this article:
 
-- `AppClientTest` verifies Login decoding, state-bearing item Status output, ignored stateless Status messages, and callback routing.
-- `MessageProcessingPipelineTest` verifies queue processing, overload behavior, batching-related flow, and shutdown.
-- `EmaJsonConverterTest` verifies message metadata, state, FieldList values, and JSON conversion.
+- `AppClientTest` checks that Login Refresh and Login Status are decoded and printed directly, that an item Status with state is printed, that an item Status without state is ignored, and that item Refresh and Update messages come out as JSON.
+- `MessageProcessingPipelineTest` checks invalid settings, drop-newest overload behavior, draining of accepted messages on close, and dropping of messages submitted after close.
+- `EmaJsonConverterTest` checks message metadata, the `<not set>` item name, Refresh state output, the payload data type, and that a blank field is output as `" blank"`.
+- `UtilityTest` checks option parsing, default values, help, and rejection of invalid options.
 
-The tests also use small worker and queue settings so the asynchronous behavior can be checked without changing the example defaults.
+The tests use small worker and queue settings so the asynchronous behavior can be checked without changing the example defaults.
+
+FieldList tests decode field values with the test-only dictionaries in the project's `etc/` folder, so they run offline. These dictionaries are not packaged into the JAR; at runtime, EMA downloads the dictionaries from RTO.
 
 ## Java 17 and Java 21 Feature Summary
 
 The modern Java features are not used only for syntax. Each one supports a specific part of the EMA application design.
 
-| Java feature | Project usage | Practical benefit |
-| --- | --- | --- |
-| Records | Item requests, queued messages, event context | Compact immutable data carriers |
-| Sealed interfaces | Request and queued-message hierarchies | Closed and compiler-known models |
-| Record patterns in `switch` | Single and batch request registration | Unpack records without casts |
-| Type-pattern `switch` | Queued message and EMA value conversion | Clear type-based dispatch |
-| Exhaustive `switch` | Sealed request and queue models | Compiler reports missing cases |
-| `List.getFirst()` | Single-item request selection | States the intention directly |
-| Virtual threads | Long-running JSON workers | Lightweight asynchronous tasks |
-| Text blocks | Command-line help | Readable multi-line strings |
-| Stream API and `toList()` | Item parsing and validation | Concise transformations and immutable results |
+| Java feature | Final in | Project usage | Practical benefit |
+| --- | --- | --- | --- |
+| `switch` expressions | Java 14 | Request selection, option parsing | No fall-through, returns a value |
+| Text blocks | Java 15 | Command-line help | Readable multi-line strings |
+| Pattern matching for `instanceof` | Java 16 | Refresh state in JSON | Type check and cast in one step |
+| Records | Java 16 | Item requests, queued messages, event context | Compact immutable data carriers |
+| `Stream.toList()` | Java 16 | Item validation | Concise, immutable results |
+| Sealed interfaces | Java 17 | Request and queued-message hierarchies | Closed and compiler-known models |
+| Pattern matching for `switch` | Java 21 | Queued message and EMA value conversion | Clear type-based dispatch |
+| Record patterns | Java 21 | Single and batch request registration | Unpack records without casts |
+| Exhaustive `switch` | Java 21 | Sealed request and queue models | Compiler reports missing cases |
+| `List.getFirst()` | Java 21 | Single-item request selection | States the intention directly |
+| Virtual threads | Java 21 | Long-running JSON workers | Lightweight asynchronous tasks |
 
-One important distinction is that records were finalized before Java 17, but they are part of the modern Java feature set available to Java 17 applications. Record patterns, pattern matching for `switch`, sequenced collection methods such as `getFirst()`, and virtual threads became final features in Java 21.
+Features marked Java 14 to Java 17 are all available to a Java 17 application. Features marked Java 21 need Java 21 or later.
 
 ## Conclusion
 

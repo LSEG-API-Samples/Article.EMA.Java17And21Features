@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.json.JSONObject;
 
 import com.refinitiv.ema.access.EmaFactory;
 import com.refinitiv.ema.access.OmmConsumerEvent;
@@ -25,6 +26,7 @@ import com.refinitiv.ema.access.OmmState.StatusCode;
 import com.refinitiv.ema.access.OmmState.StreamState;
 import com.refinitiv.ema.access.RefreshMsg;
 import com.refinitiv.ema.access.StatusMsg;
+import com.refinitiv.ema.access.UpdateMsg;
 import com.refinitiv.ema.rdm.EmaRdm;
 
 /** Tests direct message handling performed by the EMA callback client. */
@@ -98,5 +100,27 @@ class AppClientTest {
         }
 
         assertTrue(output.isEmpty());
+    }
+
+    /** Verifies that item Refresh and Update messages are converted to JSON by the pipeline. */
+    @Test
+    void convertsItemRefreshAndUpdateToJson() {
+        List<String> output = Collections.synchronizedList(new ArrayList<>());
+        RefreshMsg itemRefresh = EmaFactory.createRefreshMsg()
+                .name("TRI.N")
+                .state(StreamState.OPEN, DataState.OK, StatusCode.NONE, "open")
+                .complete(true);
+        UpdateMsg itemUpdate = EmaFactory.createUpdateMsg().name("TRI.N");
+
+        try (AppClient client = new AppClient(1, 10, output::add)) {
+            client.onRefreshMsg(itemRefresh, EVENT);
+            client.onUpdateMsg(itemUpdate, EVENT);
+        }
+
+        List<String> types = output.stream()
+                .map(json -> new JSONObject(json).getString("type"))
+                .sorted()
+                .toList();
+        assertEquals(List.of("Refresh", "Update"), types);
     }
 }

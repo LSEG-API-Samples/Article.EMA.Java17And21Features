@@ -12,6 +12,8 @@ import java.util.List;
 
 import com.refinitiv.ema.access.ChannelInformation;
 import com.refinitiv.ema.access.OmmConsumerEvent;
+import com.refinitiv.ema.access.SessionInformation;
+import com.refinitiv.ema.access.WarmStandbyChangeEventInfo;
 
 /** Supplies stable callback metadata to focused unit tests. */
 record TestConsumerEvent(String closure) implements OmmConsumerEvent {
@@ -37,6 +39,24 @@ record TestConsumerEvent(String closure) implements OmmConsumerEvent {
     /** Ignores session channel output because tests do not open an EMA connection. */
     @Override
     public void sessionChannelInfo(List<ChannelInformation> sessionChannelInfoList) {
+    }
+
+    /** Returns no session information because tests do not open an EMA connection. */
+    @Override
+    public SessionInformation sessionInformation() {
+        return null;
+    }
+
+    /** Returns no session information because tests do not open an EMA connection. */
+    @Override
+    public SessionInformation sessionInformation(List<String> sessionInformationList) {
+        return null;
+    }
+
+    /** Returns no warm-standby event because tests do not open an EMA connection. */
+    @Override
+    public WarmStandbyChangeEventInfo warmStandbyChangeEventInfo() {
+        return null;
     }
 }
 

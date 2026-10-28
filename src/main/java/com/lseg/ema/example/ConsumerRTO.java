@@ -33,6 +33,8 @@ public class ConsumerRTO {
     private static final String CLIENT_ID_ENVIRONMENT_VARIABLE = "RTO_CLIENTID_V2_1";
     private static final String CLIENT_SECRET_ENVIRONMENT_VARIABLE = "RTO_CLIENTSECRET_1";
     private static final Duration RUN_DURATION = Duration.ofMinutes(15);
+    private static final int EXIT_SUCCESS = 0;
+    private static final int EXIT_FAILURE = 1;
 
     // A View Type of 1 means that the View Data contains RDM field IDs.
     private static final int FIELD_ID_VIEW_TYPE = 1;
@@ -209,18 +211,38 @@ public class ConsumerRTO {
         return batchItems;
     }
 
+    /**
+     * Starts the consumer and exits with code 1 if startup or the session fails.
+     *
+     * @param args command-line options; use {@code -?} to list them
+     */
     public static void main(String[] args) {
+        int exitCode = run(args);
+        // A successful run ends normally once EMA and worker threads have stopped.
+        if (exitCode != EXIT_SUCCESS)
+            System.exit(exitCode);
+    }
+
+    /**
+     * Requests the configured items for {@code RUN_DURATION}, then cleans up.
+     *
+     * @param args command-line options
+     * @return {@link #EXIT_SUCCESS} after a normal run or help, otherwise {@link #EXIT_FAILURE}
+     */
+    private static int run(String[] args) {
         OmmConsumer consumer = null;
         AppClient appClient = null;
         try {
             OmmConsumerConfig config = EmaFactory.createOmmConsumerConfig();
 
-
-            if (!Utility.readCommandlineArgs(args, config))
-                return;
+            switch (Utility.readCommandlineArgs(args, config)) {
+                case CONTINUE -> { }
+                case HELP_SHOWN -> { return EXIT_SUCCESS; }
+                case INVALID -> { return EXIT_FAILURE; }
+            }
 
             if (!applyEnvironmentCredentials(config))
-                return;
+                return EXIT_FAILURE;
 
             appClient = new AppClient();
 
@@ -238,11 +260,17 @@ public class ConsumerRTO {
 
             // Keep listener active; onRefreshMsg(), onUpdateMsg(), and onStatusMsg() callbacks fire asynchronously
             Thread.sleep(RUN_DURATION);
+            return EXIT_SUCCESS;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             System.err.println("Consumer interrupted: " + exception.getMessage());
+            return EXIT_FAILURE;
+        } catch (IllegalArgumentException exception) {
+            System.err.println("Invalid item request: " + exception.getMessage());
+            return EXIT_FAILURE;
         } catch (OmmException exception) {
             System.err.println(exception.getMessage());
+            return EXIT_FAILURE;
         } finally {
             if (consumer != null)
                 consumer.uninitialize();

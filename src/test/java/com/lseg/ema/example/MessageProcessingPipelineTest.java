@@ -29,7 +29,7 @@ import com.refinitiv.ema.access.OmmState.DataState;
 import com.refinitiv.ema.access.OmmState.StatusCode;
 import com.refinitiv.ema.access.OmmState.StreamState;
 
-/** Tests bounded FIFO admission and virtual-worker lifecycle behavior. */
+/** Tests bounded admission, overload dropping, and graceful shutdown of the virtual-thread workers. */
 class MessageProcessingPipelineTest {
 
     private static final Duration WAIT_TIMEOUT = Duration.ofSeconds(5);
@@ -83,6 +83,35 @@ class MessageProcessingPipelineTest {
         assertTrue(output.stream()
                 .map(JSONObject::new)
                 .allMatch(json -> "test\"closure\n".equals(json.getString("closure"))));
+    }
+
+    /** Verifies that close() converts every accepted message before the workers stop. */
+    @Test
+    void drainsAcceptedMessagesOnClose() {
+        List<String> output = Collections.synchronizedList(new ArrayList<>());
+
+        try (MessageProcessingPipeline pipeline = new MessageProcessingPipeline(2, 10, output::add)) {
+            for (int index = 1; index <= 5; index++)
+                pipeline.submitUpdate(EmaFactory.createUpdateMsg().name("U" + index), EVENT);
+        }
+
+        List<Long> sequences = output.stream()
+                .map(json -> new JSONObject(json).getLong("sequence"))
+                .sorted()
+                .toList();
+        assertEquals(List.of(1L, 2L, 3L, 4L, 5L), sequences);
+    }
+
+    /** Verifies that messages submitted after close() are dropped instead of processed. */
+    @Test
+    void dropsMessagesSubmittedAfterClose() {
+        List<String> output = Collections.synchronizedList(new ArrayList<>());
+        MessageProcessingPipeline pipeline = new MessageProcessingPipeline(1, 10, output::add);
+        pipeline.close();
+
+        pipeline.submitUpdate(EmaFactory.createUpdateMsg().name("late"), EVENT);
+
+        assertTrue(output.isEmpty());
     }
 
     /** Waits for the test worker gate while preserving interruption status. */

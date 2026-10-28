@@ -76,7 +76,6 @@ class AppClient implements OmmConsumerClient, AutoCloseable {
         } else if (statusMsg.hasState()) {
             outputConsumer.accept(statusMsg.toString() + "\n");
         }
-
     }
 
     /** Receives Generic messages; this example does not process them. */

@@ -1,3 +1,8 @@
+### Credentials ###
+jwk_private.json
+*.jwk
+*.jwt
+
 ### Maven ###
 target/
 !.mvn/wrapper/maven-wrapper.jar

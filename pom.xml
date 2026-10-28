@@ -11,7 +11,7 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <rtsdk.version>3.10.0.1</rtsdk.version>
+        <rtsdk.version>3.10.1.0</rtsdk.version>
         <junit.version>5.13.4</junit.version>
     </properties>
 
@@ -56,6 +56,9 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <!-- Test-only dictionaries in etc/ must never be packaged. -->
+                                        <exclude>etc/RDMFieldDictionary</exclude>
+                                        <exclude>etc/enumtype.def</exclude>
                                     </excludes>
                                 </filter>
                             </filters>

@@ -33,6 +33,7 @@ import org.json.JSONObject;
 final class EmaJsonConverter {
 
     private static final String NOT_SET = "<not set>";
+    private static final String BLANK_VALUE = " blank";
 
     /** Prevents creation of this stateless utility class. */
     private EmaJsonConverter() {
@@ -113,18 +114,17 @@ final class EmaJsonConverter {
 
     /** Converts one EMA field entry to JSON. */
     private static JSONObject fieldToJson(FieldEntry fieldEntry) {
-        String value = formatValue(fieldEntry);
         return new JSONObject()
                 .put("FID", fieldEntry.fieldId())
                 .put("FieldName", fieldEntry.name())
                 .put("dataType", DataType.asString(fieldEntry.load().dataType()))
-                .put("value", value != null ? value : JSONObject.NULL);
+                .put("value", formatValue(fieldEntry));
     }
 
-    /** Formats a field value as readable text, or returns null for an EMA blank. */
+    /** Formats a field value as readable text, or returns {@code " blank"} for an EMA blank. */
     private static String formatValue(FieldEntry fieldEntry) {
         if (Data.DataCode.BLANK == fieldEntry.code())
-            return null;
+            return BLANK_VALUE;
 
         return switch (fieldEntry.load()) {
             case OmmReal real -> Double.toString(real.asDouble());

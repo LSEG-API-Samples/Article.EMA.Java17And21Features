@@ -1,7 +1,7 @@
 # Demonstrating Java 17 and Java 21 using the EMA Consumer Application 
 
 - Version: 1.0
-- Last updated: Sep 2026
+- Last updated: Oct 2026
 - Prerequisite: Java SDK version 21 and RTO access
 
 ## Overview
@@ -19,6 +19,7 @@ This POC is intended for demonstration and educational purposes only and is **no
 - Encrypted RTO connections with EMA session management
 - Single-item and batch field-view requests
 - Java 17 [records](https://openjdk.org/jeps/395) and [sealed interfaces](https://openjdk.org/jeps/409) for closed request and message models
+- Java 14–16 features available in Java 17: `switch` expressions, text blocks, pattern matching for `instanceof`, and `Stream.toList()`
 - Java 21 [pattern-matching `switch`](https://openjdk.org/jeps/441)
   expressions, [record patterns](https://openjdk.org/jeps/440),
   and [virtual threads](https://openjdk.org/jeps/444)
@@ -73,7 +74,7 @@ export RTO_CLIENTSECRET_1="your-client-secret"
 
 For JWK authentication, set `RTO_CLIENTID_V2_1` and pass the private JWK file with `-jwkFile <file>`. When a JWK file is supplied, the application does not apply the client secret.
 
-Startup stops before opening an RTO session if the client ID is blank or if neither a client secret nor a JWK file is provided.
+Startup exits with code `1` before opening an RTO session if the client ID is blank or if neither a client secret nor a JWK file is provided.
 
 > **Security:** Private JWK files and client secrets contain sensitive material. Never commit them to source control. Keep them outside the repository or use an external secret manager.
 
@@ -98,6 +99,8 @@ mvn clean package
 ```
 
 The executable artifact is `target/ema-consumer-java21-1.0.jar`.
+
+The unit tests run offline without RTO credentials. FieldList decoding tests load the test-only dictionaries `etc/RDMFieldDictionary` and `etc/enumtype.def`, so run Maven from the project root. These files are excluded from the executable JAR; at runtime, EMA downloads dictionaries from RTO.
 
 ## Run
 
@@ -201,11 +204,20 @@ StatusMsgEnd
 
 When neither TLS version option is supplied, both TLS 1.2 and TLS 1.3 are enabled.
 
+A missing option value, an empty item list, a proxy port outside 1–65535, an unreadable JWK file, or an unknown option prints an error and the help text, and the application exits with code `1` without opening an RTO session.
+
+| Exit code | Meaning |
+|---:|---|
+| `0` | Normal run completed, or help was shown with `-?`. |
+| `1` | Invalid option, missing credentials, invalid item request, interruption, or EMA error. |
+
 ## Output and Processing
 
 EMA Refresh and Update callbacks clone messages and submit them to a bounded queue for batched JSON conversion on virtual-thread workers. Login Refresh and Login Status messages are printed directly in their domain-decoded form. State-bearing non-login Status messages are also printed directly; Status messages without state are ignored.
 
 Concurrent workers may emit JSON lines in a different order from callback arrival. Each JSON object includes a monotonic `sequence` value. If the queue reaches capacity, the newest incoming message is dropped. During normal shutdown, accepted messages are drained before the worker executor closes.
+
+A FieldList entry whose value is an EMA blank is output with `"value":" blank"` (with a leading space) instead of JSON `null`.
 
 | Setting | Default |
 |---|---:|
@@ -216,6 +228,7 @@ Concurrent workers may emit JSON lines in a different order from callback arriva
 ## Project Structure
 
 - `EmaConfig.xml`: external EMA consumer, channel, and dictionary configuration
+- `etc/`: test-only field and enumerated-type dictionaries (not packaged into the JAR)
 - `pom.xml`: Java 21 build, EMA dependency, tests, and shaded-JAR packaging
 - `src/main/java/com/lseg/ema/example/ConsumerRTO.java`: application entry point, credentials, requests, and lifecycle
 - `src/main/java/com/lseg/ema/example/AppClient.java`: EMA callback handling
@@ -242,3 +255,4 @@ For further details, please check out the following resources:
 - [Java 21 features reference page](https://openjdk.org/projects/jdk/21/)
 
 For any questions related to EMA API or Real-Time SDK, please use the [Developers Community Q&A page](https://community.developers.lseg.com/).
+
