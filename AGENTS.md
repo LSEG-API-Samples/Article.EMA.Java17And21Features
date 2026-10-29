@@ -96,6 +96,18 @@
 - Do not enable JAR minimization because EMA or its dependencies may load classes reflectively.
 - Do not edit or commit generated content under `target/`.
 
+## VS Code workspace configuration
+
+- Keep `.vscode/` limited to `settings.json`, `launch.json`, and `tasks.json`. These files are tracked and shared, so never put credentials, JWK contents, keystore passwords, or proxy passwords in them.
+- `settings.json` enables Maven import with automatic build configuration updates, runs Java tests from `${workspaceFolder}` through `java.test.config`, and hides `target/`. Keep its Java indentation (4 spaces), trailing-whitespace trimming, and final-newline settings consistent with the formatting rules below, and keep trailing-whitespace trimming disabled for Markdown.
+- `launch.json` defines the `ConsumerRTO (default)`, `ConsumerRTO (help)`, `ConsumerRTO (batch items)`, and `ConsumerRTO (JWK)` configurations for `com.lseg.ema.example.ConsumerRTO` in project `ema-consumer-java21`. Keep `cwd` set to `${workspaceFolder}` so EMA finds `EmaConfig.xml`, and keep the integrated terminal console.
+- Keep the JWK configuration passing only the `${workspaceFolder}/jwk_private.json` path through `-jwkFile`; never embed JWK contents or other secrets in launch arguments or environment values.
+- `tasks.json` defines `Run Maven Tests` (`mvn test`, the default test task) and `Maven Clean Package` (`mvn clean package`, a build task), both run from `${workspaceFolder}`. Keep them equal to the validation commands in this file.
+- Keep `.idea/runConfigurations/` as the only tracked IntelliJ folder; `.gitignore` ignores the rest of `.idea/` through `.idea/*` with a `!.idea/runConfigurations/` exception. Never put secrets or JWK contents in it.
+- Keep the IntelliJ `ConsumerRTO`, `ConsumerRTO (help)`, `ConsumerRTO (batch items)`, and `ConsumerRTO (JWK)` application configurations equal to the `launch.json` configurations, with working directory `$PROJECT_DIR$` and module `ema-consumer-java21`. The default configuration has no program arguments, and the JWK configuration passes only the `$PROJECT_DIR$/jwk_private.json` path.
+- Keep the IntelliJ `Maven Test` (goal `test`) and `Maven Clean Package` (goals `clean package`) configurations, both with working directory `$PROJECT_DIR$`, equal to the `Run Maven Tests` and `Maven Clean Package` tasks.
+- Update `.vscode/` and `.idea/runConfigurations/` whenever the main class, Maven artifactId, default service or item, or supported command-line options change.
+
 ## Java coding conventions and style
 
 ### Naming

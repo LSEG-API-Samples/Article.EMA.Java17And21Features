@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="ConsumerRTO (JWK)" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="com.lseg.ema.example.ConsumerRTO" />
+    <module name="ema-consumer-java21" />
+    <option name="PROGRAM_PARAMETERS" value="-jwkFile $PROJECT_DIR$/jwk_private.json" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

@@ -1,0 +1,44 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "ConsumerRTO (default)",
+            "request": "launch",
+            "mainClass": "com.lseg.ema.example.ConsumerRTO",
+            "projectName": "ema-consumer-java21",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "ConsumerRTO (help)",
+            "request": "launch",
+            "mainClass": "com.lseg.ema.example.ConsumerRTO",
+            "projectName": "ema-consumer-java21",
+            "cwd": "${workspaceFolder}",
+            "args": ["-?"],
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "ConsumerRTO (batch items)",
+            "request": "launch",
+            "mainClass": "com.lseg.ema.example.ConsumerRTO",
+            "projectName": "ema-consumer-java21",
+            "cwd": "${workspaceFolder}",
+            "args": ["-serviceName", "ELEKTRON_DD", "-itemNames", "AUD=,HKD=,JPY="],
+            "console": "integratedTerminal"
+        },
+        {
+            "type": "java",
+            "name": "ConsumerRTO (JWK)",
+            "request": "launch",
+            "mainClass": "com.lseg.ema.example.ConsumerRTO",
+            "projectName": "ema-consumer-java21",
+            "cwd": "${workspaceFolder}",
+            "args": ["-jwkFile", "${workspaceFolder}/jwk_private.json"],
+            "console": "integratedTerminal"
+        }
+    ]
+}

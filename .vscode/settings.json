@@ -1,0 +1,19 @@
+{
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.import.maven.enabled": true,
+    "java.test.config": {
+        "workingDirectory": "${workspaceFolder}"
+    },
+    "files.exclude": {
+        "**/target": true
+    },
+    "files.insertFinalNewline": true,
+    "files.trimTrailingWhitespace": true,
+    "[java]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+    },
+    "[markdown]": {
+        "files.trimTrailingWhitespace": false
+    }
+}
