@@ -27,6 +27,7 @@
 - For non-login Status callbacks, emit `statusMsg.toString()` only when `statusMsg.hasState()` is `true`; ignore non-login Status messages without state.
 - Keep `AppClientTest` synchronized with callback behavior. Test domain-decoded Login Refresh and Login Status output, direct state-bearing non-login Status output, no output for a non-login Status without state, and JSON output for item Refresh and Update messages.
 - Use try-with-resources for `AppClient` tests so the virtual-thread pipeline is always closed.
+- Keep the package-private `AppClient(int workerCount, int queueCapacity, Consumer<String> outputConsumer)` constructor for tests so they do not depend on the default pipeline tuning values.
 
 ### Test constraints
 
@@ -34,6 +35,7 @@
 - Unit-test decoded FieldList values only against the test-only dictionaries `etc/RDMFieldDictionary` and `etc/enumtype.def` in the project root. EMA has no public decode-with-dictionary API, so `EmaJsonConverterTest` invokes EMA's package-private decode by reflection; keep that confined to the test helper and revisit it when upgrading EMA.
 - `EmaJsonConverter` outputs EMA blank field values as the exact string `" blank"` (with a leading space), not JSON `null`. Keep `EmaJsonConverterTest`, `README.md`, and `Article.md` synchronized with this behavior.
 - `Utility` stores parsed options in mutable static fields; `UtilityTest` must save and restore `Utility.serviceName` and `Utility.itemNames` around each test.
+- If a test exercises `-jwkFile` or `-audience`, also restore `Utility.clientJwk` and `Utility.audience`. The private `hasJWK` flag has no reset, so add a package-private reset hook before testing JWK loading.
 - When upgrading EMA, implement any new abstract `OmmConsumerEvent` methods in the `TestConsumerEvent` stub, returning `null` or doing nothing.
 
 ### MessageProcessingPipeline behavior

@@ -324,6 +324,39 @@ The class deliberately separates control messages from data messages:
 | Item Status without state | Ignore |
 | Generic and Ack | No processing in this example |
 
+The `AppClient` class has three constructors. The two below are the ones that matter for output:
+
+```java
+class AppClient implements OmmConsumerClient, AutoCloseable {
+
+    private final LoginRefresh loginRefresh = EmaFactory.Domain.createLoginRefresh();
+    private final LoginStatus loginStatus = EmaFactory.Domain.createLoginStatus();
+    private final MessageProcessingPipeline pipeline;
+    private final Consumer<String> outputConsumer;
+
+    /** Creates the callback client with the example pipeline settings and console output. */
+    AppClient() {
+        this(System.out::println);
+    }
+
+    /** Creates the callback client with default pipeline settings and a selected output. */
+    private AppClient(Consumer<String> outputConsumer) {
+        this.outputConsumer = Objects.requireNonNull(outputConsumer, "Output consumer must not be null.");
+        this.pipeline = new MessageProcessingPipeline(outputConsumer);
+    }
+    ...
+}
+```
+
+All text output goes through the `outputConsumer` field, a `Consumer<String>`. `Consumer` is a standard Java interface (`java.util.function`, Java 8). It represents "something that accepts a `String`" through its `accept()` method.
+
+The destination depends on which constructor creates `AppClient`:
+
+- **The application:** `AppClient()` passes `System.out::println`, so the text prints to the console.
+- **The tests:** `AppClient(int workerCount, int queueCapacity, Consumer<String> outputConsumer)` receives `output::add`, so the text is collected in a list. It also sets a small worker count and queue capacity.
+
+Either way, `AppClient` gives the same consumer to the pipeline, so Login, Status, and JSON output all go to one place.
+
 ### Handling Login Refresh Messages
 
 The Refresh callback first checks the EMA domain type:
@@ -380,41 +413,113 @@ This keeps Login and stream-state information easy to see while reserving JSON c
 
 ## MessageProcessingPipeline: Bounded Work with Virtual Threads
 
-Now, what about the pipeline that I have mentioned above. The pipeline is the main concurrency part of the application. `MessageProcessingPipeline` moves JSON conversion away from EMA callback threads.
+Now, let's look at the pipeline mentioned in the `AppClient` section. This is the part of the application that runs work in parallel.
 
-The example uses these tuning values:
+### Why the Application Needs a Pipeline
 
-| Setting | Value | Purpose |
-| --- | ---: | --- |
-| Worker count | `5` | Number of long-running processing tasks |
-| Queue capacity | `1,000` | Maximum messages waiting for processing |
-| Batch size | `50` | Maximum messages handled in one batch |
-| Poll interval | `100 ms` | How long a worker waits for the next message |
-| Shutdown timeout | `10 s` | Maximum normal worker shutdown wait |
+EMA delivers each message by calling an `AppClient` method on an EMA thread. Until that method returns, EMA cannot hand the next message to the application. Converting a message to JSON and writing it out takes time. If the callback did that work itself, every message behind it would have to wait.
 
-### Virtual-thread Worker Executor
+`MessageProcessingPipeline` splits the work into two parts:
 
-The constructor creates a bounded queue and a virtual-thread-per-task executor:
+- **The callback does only quick work.** It copies the message, puts it in a queue, and returns.
+- **Separate worker tasks do the slower work.** They take messages from the queue, convert them to JSON, and write the output.
 
-```java
-this.messageQueue = new LinkedBlockingQueue<>(queueCapacity);
-this.outputConsumer = Objects.requireNonNull(
-        outputConsumer, "Output consumer must not be null.");
-this.workerExecutor = Executors.newVirtualThreadPerTaskExecutor();
+A restaurant kitchen is a good comparison. A waiter (`AppClient`) pins each order on a rail and goes straight back to the customers. Cooks (the workers) take orders from the rail and prepare them. The rail has a fixed number of slots (the queue capacity). If every slot is full, a new order is turned away instead of piling up on the floor.
 
-for (int workerIndex = 0; workerIndex < workerCount; workerIndex++)
-    workerExecutor.submit(this::processBatches);
+### The Life of One Message
+
+The diagram below follows one item Update message through the pipeline:
+
+```mermaid
+flowchart LR
+    Callback["EMA callback<br/>AppClient.onUpdateMsg()"] -->|Clone message| Submit["submitUpdate()<br/>add sequence and event details"]
+    Submit --> Check{"Queue full or<br/>pipeline closing?"}
+    Check -->|Yes| Dropped["Drop and count it<br/>(droppedMessages)"]
+    Check -->|No| Queue[("Bounded queue<br/>1,000 slots")]
+    Queue -->|"poll() + drainTo()<br/>up to 50 messages"| Workers["5 virtual-thread workers"]
+    Workers --> Convert["convertAndWrite()"]
+    Convert -->|Success| Output["JSON output"]
+    Convert -->|Failure| Error["Print error,<br/>worker keeps running"]
 ```
 
-Virtual threads became a final feature in Java 21. They are lightweight Java threads managed by the runtime. They are useful when tasks spend time waiting, such as workers polling a queue or writing output, because an application can use them without creating the same number of expensive operating-system threads.
+In words:
 
-This example submits five long-running worker tasks. The virtual-thread executor creates one virtual thread for each worker task, while the bounded queue controls how much pending data the application retains.
+1. EMA calls `AppClient`, which clones the message and passes it to `submitRefresh()` or `submitUpdate()`.
+2. The pipeline gives the message a sequence number and copies the callback details it needs.
+3. If the queue has free space, the message is added. Otherwise, it is dropped and counted.
+4. A free worker takes the message, together with any other waiting messages, as one batch.
+5. The worker converts each message in the batch to JSON and writes it.
+6. When the application closes, no new messages are accepted, and the workers finish the messages already in the queue.
 
-Virtual threads do not remove the need for overload control. An incoming market data stream can still be faster than JSON conversion or its output destination. That is why queue capacity remains important.
+The following sections look at each step in more detail.
 
-### Immutable Queued Messages with Records and Sealed Types
+### Tuning Values
 
-The pipeline uses another closed hierarchy:
+The example uses these values. Each one is a named constant at the top of the class, so it is easy to find and change:
+
+| Setting | Value | Purpose | If you increase it |
+| --- | ---: | --- | --- |
+| Worker count | `5` | Number of long-running worker tasks | More messages are converted at the same time, but output order varies more |
+| Queue capacity | `1,000` | Maximum messages waiting for a worker | Fewer messages are dropped during bursts, but more memory is used |
+| Batch size | `50` | Maximum messages a worker takes at once | Fewer trips to the queue, but one worker holds more messages |
+| Poll interval | `100 ms` | How long an idle worker waits for a message before checking again | Idle workers wake up less often, but notice shutdown more slowly |
+| Shutdown timeout | `10 s` | Maximum wait for workers to finish during close | More time to finish queued work before workers are forced to stop |
+
+### Starting the Workers on Virtual Threads
+
+The constructor creates the queue and starts the workers:
+
+```java
+/**
+* Creates a pipeline with explicit worker and queue settings.
+*
+* @param workerCount    number of long-running virtual workers
+* @param queueCapacity  maximum queued message count
+* @param outputConsumer destination for complete JSON strings
+*/
+MessageProcessingPipeline(
+    int workerCount,
+    int queueCapacity,
+    Consumer<String> outputConsumer) {
+
+    if (workerCount < 1)
+        throw new IllegalArgumentException("Worker count must be at least one.");
+    if (queueCapacity < 1)
+        throw new IllegalArgumentException("Queue capacity must be at least one.");
+
+    this.messageQueue = new LinkedBlockingQueue<>(queueCapacity);
+    this.outputConsumer = Objects.requireNonNull(outputConsumer, "Output consumer must not be null.");
+    this.workerExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    for (int workerIndex = 0; workerIndex < workerCount; workerIndex++)
+        workerExecutor.submit(this::processBatches);
+}
+```
+
+`LinkedBlockingQueue` with a capacity is a thread-safe queue that holds at most that many messages. Several threads can safely add and remove messages at the same time.
+
+`Executors.newVirtualThreadPerTaskExecutor()` runs every submitted task on its own virtual thread. Virtual threads became final in Java 21.
+
+The difference from a traditional (platform) thread is:
+
+- **Platform thread:** tied to one operating-system thread for its whole life, even while it only waits.
+- **Virtual thread:** managed by the Java runtime. While it waits, for example for a message in `poll()`, it gives up its operating-system thread so other work can use it.
+
+This makes virtual threads cheap to create and a good fit for tasks that spend most of their time waiting, like these workers.
+
+Notice that the `for` loop in the constructor submits only five tasks. It does **not** create one virtual thread per message. Each task runs `processBatches()`, which keeps taking messages from the queue until the pipeline closes. Two limits keep the load under control:
+
+- **The number of workers** limits how much work runs at the same time.
+- **The queue capacity** limits how many messages can wait.
+
+The `outputConsumer` is the same one that `AppClient` passed in. Up to five workers may call it at the same time, so it must be thread-safe. `System.out.println` is, and the tests use a synchronized list.
+
+Virtual threads do not remove the need for overload control. Market data can still arrive faster than it can be converted and written. That is why the queue has a fixed capacity.
+
+### What Goes into the Queue: Records and a Sealed Interface
+
+The callback's `OmmConsumerEvent` and the original EMA message belong to EMA, and EMA may reuse them after the callback returns. A worker processes the message later, so the queue must hold the application's own copies.
+
+The pipeline wraps each message in a small record:
 
 ```java
 private sealed interface QueuedMessage
@@ -452,11 +557,21 @@ private record EventContext(
 
 `QueuedRefresh` and `QueuedUpdate` carry a cloned EMA message, a sequence number, and immutable callback details. `EventContext.capture()` copies the values needed later instead of keeping the callback-owned `OmmConsumerEvent` object.
 
-Once again, records reduce boilerplate and the sealed interface tells the compiler the complete set of queued message types.
+Each queued message has three parts:
 
-### Bounded Admission and Drop-newest Behavior
+| Component | What it holds | Why it is needed |
+| --- | --- | --- |
+| `sequence` | A number that goes up by one for every submitted message | Shows the original arrival order in the JSON output |
+| `eventContext` | Copies of the handle, parent handle, and closure | Lets the JSON output say which request the message belongs to |
+| `message` | The cloned EMA Refresh or Update | The market data to convert |
 
-Submitting a message increments a monotonic sequence and captures its callback context:
+Records (Java 16) keep these data holders short: Java generates the constructor, accessors, `equals()`, `hashCode()`, and `toString()`. The values cannot change after creation, so a worker on another thread can read them safely.
+
+The sealed interface (Java 17) says that a queued message can only be a `QueuedRefresh` or a `QueuedUpdate`. Later, the compiler uses this to check that the code handles both types.
+
+### Adding Messages: Drop the Newest When Full
+
+The callback side calls `submitRefresh()` or `submitUpdate()`. Both work the same way:
 
 ```java
 void submitUpdate(UpdateMsg updateMsg, OmmConsumerEvent event) {
@@ -474,15 +589,22 @@ private void enqueue(QueuedMessage queuedMessage) {
 }
 ```
 
-`offer()` does not wait for queue space. If the bounded queue is full, the newest incoming message is dropped and counted. This protects the application from unbounded memory growth.
+Here is what happens:
 
-The sequence number counts callback admission attempts. Therefore, dropped messages leave gaps in the sequence values written to JSON. Those gaps can help reveal overload.
+1. `sequence.incrementAndGet()` gives the message the next number: 1, 2, 3, and so on. `AtomicLong` makes this safe even if two callbacks run at the same time.
+2. `EventContext.capture(event)` copies the callback details.
+3. `offer()` tries to add the message to the queue. It returns `true` when there is a free slot. It returns `false` immediately when the queue is full. It never waits.
+4. If the pipeline is closing or `offer()` returns `false`, the message is not queued. The `droppedMessages` counter goes up instead.
 
-The admission lock also coordinates submission with shutdown. Once closing begins, a new message cannot be accepted while workers are draining the queue.
+Why not wait for a free slot with `put()`? Waiting would block EMA's callback thread, which is the problem the pipeline exists to avoid. The application drops the newest message instead, so memory use stays limited and EMA keeps running.
 
-### Processing Messages in Batches
+A dropped message still used a sequence number, so it leaves a gap in the output. If the JSON output shows sequences `1`, `2`, `4`, then message `3` was dropped. These gaps make overload easy to see.
 
-Each worker waits for one message and then drains more available messages into the same batch:
+`synchronized (admissionLock)` lets only one thread at a time check the `closing` flag and add a message. The `close()` method sets `closing` while holding the same lock. Together, this guarantees that no message is added after shutdown begins.
+
+### Workers Process Messages in Batches
+
+Each worker runs this loop in `processBatches()`:
 
 ```java
 while (!closing || !messageQueue.isEmpty()) {
@@ -499,13 +621,50 @@ while (!closing || !messageQueue.isEmpty()) {
 }
 ```
 
-The first `poll()` avoids a busy loop when there is no data. `drainTo()` then collects up to 49 more messages, making a maximum batch of 50. Batching reduces repeated queue operations when messages arrive quickly.
+The loop condition reads as "keep going until the pipeline is closing **and** the queue is empty". While the application runs, workers keep looping. During shutdown, they continue until the remaining messages are processed.
 
-The queue admits messages in FIFO order, but five workers can complete their batches at different times. Therefore, JSON output order is not guaranteed to match callback arrival order. Consumers of the output should use the `sequence` property when they need to identify the original admission order.
+Inside the loop, each pass does four things:
 
-### Exhaustive Message Dispatch
+1. **Wait for one message.** `poll()` waits up to 100 ms. If nothing arrives, it returns `null` and the loop checks the condition again. Waiting this way means an idle worker uses almost no CPU.
+2. **Grab more waiting messages.** `drainTo()` moves up to 49 more messages into the same batch without waiting. A batch therefore holds at most 50 messages.
+3. **Process the batch.** `convertAndWrite()` handles each message in turn.
+4. **Reuse the list.** `batch.clear()` empties the list for the next pass.
 
-The pipeline uses Java 21 pattern matching for `switch` to name each queued type:
+Taking many messages at once means fewer trips to the shared queue when data arrives quickly.
+
+**About output order:** the queue is first in, first out, so messages leave the queue in arrival order. However, five workers run at the same time. For example, worker A may take messages 1–50 while worker B takes 51–60. Worker B has less to do and may print its JSON first. If order matters, sort the output by its `sequence` value.
+
+### Converting One Message Safely
+
+Each message in a batch goes through `convertAndWrite()`:
+
+```java
+private void convertAndWrite(QueuedMessage queuedMessage) {
+    try {
+        EventContext context = queuedMessage.eventContext();
+        outputConsumer.accept(EmaJsonConverter.toJson(
+                queuedMessage.sequence(),
+                messageType(queuedMessage),
+                context.handle(),
+                context.parentHandle(),
+                context.closure(),
+                queuedMessage.message()));
+    } catch (RuntimeException exception) {
+        System.err.printf(
+                "Unable to convert EMA message sequence %d to JSON: %s%n",
+                queuedMessage.sequence(),
+                exception.getMessage());
+    }
+}
+```
+
+The method collects everything that `EmaJsonConverter.toJson()` needs: the sequence number, a readable message type, the copied callback details, and the cloned EMA message. It then passes the finished JSON string to `outputConsumer`, the output destination described in the `AppClient` section.
+
+The `try`/`catch` covers **one message**. If a message cannot be converted, or writing the output fails, the method prints the sequence number and the error, and then returns normally. The worker continues with the next message in the batch. Without this, one bad message would stop the whole worker, and the pipeline would quietly lose one of its five workers.
+
+### Naming the Message Type with a switch
+
+`convertAndWrite()` uses `messageType()` to get the `"type"` value for the JSON. It uses Java 21 pattern matching for `switch`:
 
 ```java
 private static String messageType(QueuedMessage queuedMessage) {
@@ -516,15 +675,15 @@ private static String messageType(QueuedMessage queuedMessage) {
 }
 ```
 
-No cast or `instanceof` chain is required. There is also no `default` because the sealed interface makes the two cases exhaustive.
+Each `case` checks the type of the queued message, with no `instanceof` checks or casts. Without pattern matching, this would be an `if`/`else if` chain plus a final fallback for "unknown type".
+
+There is no `default` branch. `QueuedMessage` is sealed, so the compiler knows these two cases cover every possibility. If someone adds a third queued message type later, this `switch` will not compile until it handles that type too.
 
 The pattern variables are named `ignored` because only the type matters here. Java 22 lets you write `_` for an unused variable, but this project targets Java 21, so it uses a normal name.
 
-Each conversion has its own `try` block. A malformed message or output failure is reported, but it does not terminate the worker and prevent later messages from being processed.
+### Shutting Down Cleanly
 
-### Graceful Shutdown
-
-Closing the pipeline first stops admission, then requests executor shutdown:
+When `AppClient` is closed, it calls the pipeline's `close()` method:
 
 ```java
 synchronized (admissionLock) {
@@ -532,21 +691,41 @@ synchronized (admissionLock) {
 }
 workerExecutor.shutdown();
 
-if (!workerExecutor.awaitTermination(
-        SHUTDOWN_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
-    List<Runnable> abandonedWorkers = workerExecutor.shutdownNow();
-    System.err.printf(
-            "JSON workers did not stop cleanly; "
-                    + "%d worker tasks were abandoned.%n",
-            abandonedWorkers.size());
+try {
+    if (!workerExecutor.awaitTermination(
+            SHUTDOWN_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+        List<Runnable> abandonedWorkers = workerExecutor.shutdownNow();
+        System.err.printf(
+                "JSON workers did not stop cleanly; "
+                        + "%d worker tasks were abandoned.%n",
+                abandonedWorkers.size());
+    }
+} catch (InterruptedException exception) {
+    workerExecutor.shutdownNow();
+    Thread.currentThread().interrupt();
 }
+
+System.err.printf("JSON queue summary: dropped messages=%d%n",
+        droppedMessages.get());
 ```
 
-During normal shutdown, workers continue while the queue is not empty. This drains messages that were accepted before closing started.
+Shutdown happens in four steps:
 
-If workers do not finish within ten seconds, `shutdownNow()` interrupts them. For that reason, normal close aims to process every accepted message, but the application does not promise unconditional delivery during a forced timeout or process termination.
+1. **Stop accepting messages.** `closing = true` is set under the same lock that `enqueue()` uses, so a message cannot be added after this point.
+2. **Let the workers finish.** `shutdown()` accepts no new tasks but does not interrupt running workers. Each worker continues its loop until the queue is empty.
+3. **Wait, but not forever.** `awaitTermination()` waits up to ten seconds. If the workers are still busy, `shutdownNow()` interrupts them and a warning is printed.
+4. **Report overload.** The last line prints how many messages were dropped, for example `JSON queue summary: dropped messages=0`.
 
-The pipeline finally reports how many incoming messages were dropped.
+If the thread that calls `close()` is itself interrupted while waiting, the pipeline stops the workers and restores the interrupted status, so the cancellation signal is not lost.
+
+In a normal close, every accepted message is processed. However, the application does not promise delivery if the timeout is reached or the process is killed.
+
+### Key Takeaways
+
+- Keep EMA callbacks fast: clone the message, queue it, and return.
+- Use a bounded queue and count dropped messages instead of letting memory grow without limit.
+- Store your own immutable copies (records) of anything a worker needs later.
+- On close, stop new work first, then let workers finish what was already accepted.
 
 That covers the virtual-thread processing pipeline.
 
@@ -800,11 +979,11 @@ This EMA consumer shows how Java 17 and Java 21 features can work together in a 
 
 The most important point is not to use every new Java feature. It is to use each feature where it makes the application rules clearer: closed models for known alternatives, immutable records for transferred data, exhaustive switches for routing, and virtual threads for lightweight concurrent work.
 
-That covers the EMA Java application and its Java 17 and Java 21 features.
+That is all I have to say about using Java 17 and Java 21 features with EMA Java consumer application.
 
 ## References
 
-For further details, please check the following resources:
+You can find more detail regarding the EMA Java API and Java SDK features from the following resources:
 
 - [Enterprise Message API - Java Edition](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java)
 - [EMA and ETA Java APIs RTO with Version 2 Authentication Quickstart](https://developers.lseg.com/en/api-catalog/real-time-opnsrc/rt-sdk-java/quick-start#rtsdk-ema-eta-quick-start-connecting-to-the-real-time-optimized-with-authentication-version-2)
@@ -816,3 +995,5 @@ For further details, please check the following resources:
 - [Pattern Matching in Java 21](https://docs.oracle.com/en/java/javase/21/language/pattern-matching.html)
 - [Sequenced Collections](https://docs.oracle.com/en/java/javase/21/core/creating-sequenced-collections-sets-and-maps.html)
 - [Virtual Threads](https://docs.oracle.com/en/java/javase/21/core/virtual-threads.html)
+
+For any question related to this example or Data Library, please use the Developers Community [Q&A Forum](https://community.developers.refinitiv.com).
